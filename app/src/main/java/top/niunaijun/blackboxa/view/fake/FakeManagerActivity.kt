@@ -111,13 +111,7 @@ class FakeManagerActivity : BaseActivity() {
                 if (it.isNotEmpty()) {
                     viewBinding.stateView.showContent()
                 } else {
-                    val emptyView = viewBinding.stateView.showEmpty()
-                    emptyView?.findViewById<android.view.View>(R.id.btn_clone_app)?.setOnClickListener {
-                        val intent = Intent(this, top.niunaijun.blackboxa.view.list.ListActivity::class.java)
-                        intent.putExtra("userID", currentUserID())
-                        startActivity(intent)
-                        finish()
-                    }
+                    viewBinding.stateView.showEmpty()
                 }
             }
         }

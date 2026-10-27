@@ -8,10 +8,10 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -114,223 +114,237 @@ fun SettingsScreen(onBack: () -> Unit) {
         try { BlackBoxCore.get().isSupportGms } catch (_: Exception) { false }
     }
 
-    Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(R.string.setting),
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val isCompactWidth = maxWidth < 400.dp
+        val horizontalPadding = if (isCompactWidth) 10.dp else 16.dp
+        val cardSpacing = if (isCompactWidth) 10.dp else 16.dp
+        val titleStyle = if (isCompactWidth) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge
+
+        Scaffold(
+            topBar = {
+                CenterAlignedTopAppBar(
+                    title = {
+                        Text(
+                            text = stringResource(R.string.setting),
+                            style = titleStyle.copy(fontWeight = FontWeight.Bold)
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(
+                            onClick = onBack,
+                            modifier = Modifier.testTag("settings_back_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back"
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface
                     )
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.testTag("settings_back_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
+                )
+            },
+            containerColor = MaterialTheme.colorScheme.background
+        ) { paddingValues ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = horizontalPadding, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(cardSpacing)
+            ) {
+                // Section: Security & Privacy
+                SettingsSectionHeader(title = "Security & Privacy")
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Column {
+                        SettingsSwitchRow(
+                            title = stringResource(R.string.hide_root),
+                            description = "Hide root & su binary traces from sandboxed apps",
+                            icon = Icons.Default.Security,
+                            checked = hideRoot,
+                            onCheckedChange = { checked ->
+                                hideRoot = checked
+                                try {
+                                    AppManager.mBlackBoxLoader.invalidHideRoot(checked)
+                                    Toast.makeText(context, R.string.restart_module, Toast.LENGTH_SHORT).show()
+                                } catch (_: Exception) {}
+                            },
+                            testTag = "switch_hide_root",
+                            isCompact = isCompactWidth
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        SettingsSwitchRow(
+                            title = "Disable Flag Secure",
+                            description = "Permit screenshots & recording inside secured apps",
+                            icon = Icons.Default.Lock,
+                            checked = disableFlagSecure,
+                            onCheckedChange = { checked ->
+                                disableFlagSecure = checked
+                                try {
+                                    AppManager.mBlackBoxLoader.invalidDisableFlagSecure(checked)
+                                    Toast.makeText(context, R.string.restart_module, Toast.LENGTH_SHORT).show()
+                                } catch (_: Exception) {}
+                            },
+                            testTag = "switch_disable_flag_secure",
+                            isCompact = isCompactWidth
                         )
                     }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        },
-        containerColor = MaterialTheme.colorScheme.background
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Section: Security & Privacy
-            SettingsSectionHeader(title = "Security & Privacy")
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                Column {
-                    SettingsSwitchRow(
-                        title = stringResource(R.string.hide_root),
-                        description = "Hide root & su binary traces from sandboxed apps",
-                        icon = Icons.Default.Security,
-                        checked = hideRoot,
-                        onCheckedChange = { checked ->
-                            hideRoot = checked
-                            try {
-                                AppManager.mBlackBoxLoader.invalidHideRoot(checked)
-                                Toast.makeText(context, R.string.restart_module, Toast.LENGTH_SHORT).show()
-                            } catch (_: Exception) {}
-                        },
-                        testTag = "switch_hide_root"
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                    SettingsSwitchRow(
-                        title = "Disable Flag Secure",
-                        description = "Permit screenshots & recording inside secured apps",
-                        icon = Icons.Default.Lock,
-                        checked = disableFlagSecure,
-                        onCheckedChange = { checked ->
-                            disableFlagSecure = checked
-                            try {
-                                AppManager.mBlackBoxLoader.invalidDisableFlagSecure(checked)
-                                Toast.makeText(context, R.string.restart_module, Toast.LENGTH_SHORT).show()
-                            } catch (_: Exception) {}
-                        },
-                        testTag = "switch_disable_flag_secure"
-                    )
                 }
-            }
 
-            // Section: Runtime & Networking
-            SettingsSectionHeader(title = "Runtime & Networking")
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                Column {
-                    SettingsSwitchRow(
-                        title = stringResource(R.string.daemon_enable),
-                        description = "Keep sandboxed background services running reliably",
-                        icon = Icons.Default.Sync,
-                        checked = daemonEnable,
-                        onCheckedChange = { checked ->
-                            daemonEnable = checked
-                            try {
-                                AppManager.mBlackBoxLoader.invalidDaemonEnable(checked)
-                                Toast.makeText(context, R.string.restart_module, Toast.LENGTH_SHORT).show()
-                            } catch (_: Exception) {}
-                        },
-                        testTag = "switch_daemon_enable"
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                    SettingsSwitchRow(
-                        title = stringResource(R.string.use_vpn_network),
-                        description = stringResource(R.string.use_vpn_network_summary),
-                        icon = Icons.Default.VpnKey,
-                        checked = useVpn,
-                        onCheckedChange = { checked ->
-                            useVpn = checked
-                            try {
-                                AppManager.mBlackBoxLoader.invalidUseVpnNetwork(checked)
-                                Toast.makeText(context, R.string.restart_module, Toast.LENGTH_SHORT).show()
-                            } catch (_: Exception) {}
-                        },
-                        testTag = "switch_use_vpn"
-                    )
+                // Section: Runtime & Networking
+                SettingsSectionHeader(title = "Runtime & Networking")
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Column {
+                        SettingsSwitchRow(
+                            title = stringResource(R.string.daemon_enable),
+                            description = "Keep sandboxed background services running reliably",
+                            icon = Icons.Default.Sync,
+                            checked = daemonEnable,
+                            onCheckedChange = { checked ->
+                                daemonEnable = checked
+                                try {
+                                    AppManager.mBlackBoxLoader.invalidDaemonEnable(checked)
+                                    Toast.makeText(context, R.string.restart_module, Toast.LENGTH_SHORT).show()
+                                } catch (_: Exception) {}
+                            },
+                            testTag = "switch_daemon_enable",
+                            isCompact = isCompactWidth
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        SettingsSwitchRow(
+                            title = stringResource(R.string.use_vpn_network),
+                            description = stringResource(R.string.use_vpn_network_summary),
+                            icon = Icons.Default.VpnKey,
+                            checked = useVpn,
+                            onCheckedChange = { checked ->
+                                useVpn = checked
+                                try {
+                                    AppManager.mBlackBoxLoader.invalidUseVpnNetwork(checked)
+                                    Toast.makeText(context, R.string.restart_module, Toast.LENGTH_SHORT).show()
+                                } catch (_: Exception) {}
+                            },
+                            testTag = "switch_use_vpn",
+                            isCompact = isCompactWidth
+                        )
+                    }
                 }
-            }
 
-            // Section: Integrations
-            SettingsSectionHeader(title = "Google Services & Add-ons")
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                SettingsActionRow(
-                    title = "Google Mobile Services (GMS)",
-                    description = if (isSupportGms) "Manage Google Play Services per user" else stringResource(R.string.no_gms),
-                    icon = Icons.Default.Public,
-                    enabled = isSupportGms,
-                    onClick = {
-                        if (isSupportGms) {
-                            GmsManagerActivity.start(context)
-                        }
-                    },
-                    testTag = "btn_gms_manager"
-                )
-            }
-
-            // Section: Diagnostics & Logs
-            SettingsSectionHeader(title = "Diagnostics & Troubleshooting")
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                SettingsActionRow(
-                    title = "Export Diagnostic Logs",
-                    description = if (isSendingLogs) "Generating system dump..." else "Create and dispatch BlackBox debug logs",
-                    icon = Icons.Default.BugReport,
-                    enabled = !isSendingLogs,
-                    trailing = {
-                        if (isSendingLogs) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.Send,
-                                contentDescription = "Send",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    },
-                    onClick = {
-                        isSendingLogs = true
-                        Toast.makeText(context, "Collecting BlackBox diagnostic logs...", Toast.LENGTH_SHORT).show()
-                        try {
-                            BlackBoxCore.get().sendLogs(
-                                "Manual Log Upload from Settings",
-                                true,
-                                object : BlackBoxCore.LogSendListener {
-                                    override fun onSuccess() {
-                                        isSendingLogs = false
-                                        Toast.makeText(context, "Logs successfully generated", Toast.LENGTH_SHORT).show()
-                                    }
-
-                                    override fun onFailure(error: String?) {
-                                        isSendingLogs = false
-                                        Toast.makeText(context, "Log generation failed: $error", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            )
-                        } catch (e: Exception) {
-                            isSendingLogs = false
-                            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    testTag = "btn_export_logs"
-                )
-            }
-
-            // Section: About
-            SettingsSectionHeader(title = "About")
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                Column {
+                // Section: Integrations
+                SettingsSectionHeader(title = "Google Services & Add-ons")
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
                     SettingsActionRow(
-                        title = "BlackBox Core Engine",
-                        description = "Version 2.0 (Target Android 15 / API 35)",
-                        icon = Icons.Default.Info,
-                        onClick = {},
-                        trailing = {}
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                    SettingsActionRow(
-                        title = "Source Code & Updates",
-                        description = "https://github.com/ALEX5402/NewBlackbox",
+                        title = "Google Mobile Services (GMS)",
+                        description = if (isSupportGms) "Manage Google Play Services per user" else stringResource(R.string.no_gms),
                         icon = Icons.Default.Public,
+                        enabled = isSupportGms,
                         onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/ALEX5402/NewBlackbox"))
-                            context.startActivity(intent)
-                        }
+                            if (isSupportGms) {
+                                GmsManagerActivity.start(context)
+                            }
+                        },
+                        testTag = "btn_gms_manager",
+                        isCompact = isCompactWidth
                     )
                 }
-            }
 
-            Spacer(modifier = Modifier.height(24.dp))
+                // Section: Diagnostics & Logs
+                SettingsSectionHeader(title = "Diagnostics & Local Storage")
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    SettingsActionRow(
+                        title = "Save Diagnostic Logs Locally",
+                        description = if (isSendingLogs) "Generating system dump..." else "Save BlackBox crash & debug log to private storage",
+                        icon = Icons.Default.BugReport,
+                        enabled = !isSendingLogs,
+                        trailing = {
+                            if (isSendingLogs) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Send,
+                                    contentDescription = "Save",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        },
+                        onClick = {
+                            isSendingLogs = true
+                            Toast.makeText(context, "Collecting diagnostic logs...", Toast.LENGTH_SHORT).show()
+                            try {
+                                BlackBoxCore.get().sendLogs(
+                                    "Manual Log Save from Settings",
+                                    true,
+                                    object : BlackBoxCore.LogSendListener {
+                                        override fun onSuccess() {
+                                            isSendingLogs = false
+                                        }
+
+                                        override fun onFailure(error: String?) {
+                                            isSendingLogs = false
+                                            Toast.makeText(context, "Log save failed: $error", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                )
+                            } catch (e: Exception) {
+                                isSendingLogs = false
+                                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        testTag = "btn_export_logs",
+                        isCompact = isCompactWidth
+                    )
+                }
+
+                // Section: About
+                SettingsSectionHeader(title = "About")
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Column {
+                        SettingsActionRow(
+                            title = "BlackBox Core Engine",
+                            description = "Version 2.0 (Target Android 15 / API 35)",
+                            icon = Icons.Default.Info,
+                            onClick = {},
+                            trailing = {},
+                            isCompact = isCompactWidth
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        SettingsActionRow(
+                            title = "Source Code & Updates",
+                            description = "https://github.com/ALEX5402/NewBlackbox",
+                            icon = Icons.Default.Public,
+                            onClick = {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/ALEX5402/NewBlackbox"))
+                                context.startActivity(intent)
+                            },
+                            isCompact = isCompactWidth
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+            }
         }
     }
 }
@@ -339,12 +353,12 @@ fun SettingsScreen(onBack: () -> Unit) {
 fun SettingsSectionHeader(title: String) {
     Text(
         text = title,
-        style = MaterialTheme.typography.labelLarge.copy(
+        style = MaterialTheme.typography.labelMedium.copy(
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.SemiBold,
             letterSpacing = 0.5.sp
         ),
-        modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+        modifier = Modifier.padding(start = 4.dp, top = 2.dp)
     )
 }
 
@@ -355,44 +369,50 @@ fun SettingsSwitchRow(
     icon: ImageVector,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    testTag: String
+    testTag: String,
+    isCompact: Boolean = false
 ) {
+    val horizontalPadding = if (isCompact) 12.dp else 16.dp
+    val verticalPadding = if (isCompact) 10.dp else 14.dp
+    val titleStyle = if (isCompact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium
+    val descStyle = if (isCompact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.bodySmall
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = horizontalPadding, vertical = verticalPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Surface(
             shape = CircleShape,
             color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-            modifier = Modifier.size(40.dp)
+            modifier = Modifier.size(if (isCompact) 32.dp else 40.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(if (isCompact) 16.dp else 20.dp)
                 )
             }
         }
-        Spacer(modifier = Modifier.width(14.dp))
+        Spacer(modifier = Modifier.width(if (isCompact) 10.dp else 14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+                style = titleStyle.copy(fontWeight = FontWeight.Medium),
                 color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = description,
-                style = MaterialTheme.typography.bodySmall,
+                style = descStyle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(8.dp))
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
@@ -417,44 +437,50 @@ fun SettingsActionRow(
             imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(16.dp)
+            modifier = Modifier.size(14.dp)
         )
     },
-    testTag: String = ""
+    testTag: String = "",
+    isCompact: Boolean = false
 ) {
+    val horizontalPadding = if (isCompact) 12.dp else 16.dp
+    val verticalPadding = if (isCompact) 10.dp else 14.dp
+    val titleStyle = if (isCompact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium
+    val descStyle = if (isCompact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.bodySmall
+
     val modifier = if (testTag.isNotEmpty()) Modifier.testTag(testTag) else Modifier
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = horizontalPadding, vertical = verticalPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Surface(
             shape = CircleShape,
             color = if (enabled) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f) else MaterialTheme.colorScheme.surfaceVariant,
-            modifier = Modifier.size(40.dp)
+            modifier = Modifier.size(if (isCompact) 32.dp else 40.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
                     tint = if (enabled) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(if (isCompact) 16.dp else 20.dp)
                 )
             }
         }
-        Spacer(modifier = Modifier.width(14.dp))
+        Spacer(modifier = Modifier.width(if (isCompact) 10.dp else 14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+                style = titleStyle.copy(fontWeight = FontWeight.Medium),
                 color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = description,
-                style = MaterialTheme.typography.bodySmall,
+                style = descStyle,
                 color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
             )
         }

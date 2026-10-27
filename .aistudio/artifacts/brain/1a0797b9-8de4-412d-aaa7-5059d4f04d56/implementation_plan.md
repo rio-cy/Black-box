@@ -1,87 +1,61 @@
-# SAF Migration & Storage Permission Removal Plan
+# Implementation Plan: App & Virtualization Framework Updates
 
-Complete removal of legacy storage permissions (`READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `MANAGE_EXTERNAL_STORAGE`) in favor of Storage Access Framework (`ACTION_OPEN_DOCUMENT`) for APK importing and virtualized isolated storage for cloned applications.
+This plan addresses remote endpoint removal, crash log local storage, fake location preview cleanup, Indian SIM operator spoofing, Android 11 identity spoofing compatibility, and dynamic UI responsiveness across screen sizes.
 
-## User Review & Critical Decisions
+---
+
+## User Review Required
 
 > [!IMPORTANT]
-> The following choices were confirmed by the user during the Phase 1 interview:
-
-- **Confirmed Decision 1 (APK Importing)**: Use standard Android SAF file picker (`ACTION_OPEN_DOCUMENT`) without requesting any broad storage permissions.
-- **Confirmed Decision 2 (Virtual Storage)**: Isolate cloned applications inside BlackBox's private app directory (`/Android/data/top.niunaijun.blackbox/files/blackbox/`) and spoof virtual storage checks (`checkSelfPermission`) to return `PERMISSION_GRANTED` to virtual apps.
-- **Confirmed Decision 3 (Manifest Cleanup)**: Completely remove legacy storage permission declarations from `AndroidManifest.xml` and eliminate runtime storage permission prompts from `MainActivity.kt` and `StoragePermissionHelper.java`.
-
----
-
-## 1. Overview & Core Concept
-
-- **What It Does**: Upgrades BlackBox to a zero-storage-permission model. APK files can be imported via system SAF file picking. Cloned applications operate seamlessly inside BlackBox's isolated storage sandbox without prompting the host user for phone storage permissions.
-- **Target Audience**: Users seeking privacy-respecting virtual app cloning without granting sensitive device-wide storage access permissions.
-- **Key Value**: Enhanced user privacy, full Google Play policy compliance, and clean installation UX using native Android document pickers.
+> **Key Architectural Decisions**
+> 1. **Crash Log Storage**: Remote endpoint HTTP uploads will be replaced with local file logging under app-private storage (`context.getExternalFilesDir("crash_logs")` / `context.getFilesDir()`).
+> 2. **Indian SIM Carriers**: Identity spoofing will include preset telemetry for **Jio**, **Airtel**, **Vi (Vodafone Idea)**, and **BSNL** with authentic Indian Mobile Country Codes (MCC 404/405), Mobile Network Codes (MNC), operator names, and realistic 10-digit mobile numbers (+91 / 6x, 7x, 8x, 9x series). Carrier profiles will be randomly assigned per virtual app profile.
+> 3. **Android 11 (API 30) Virtual Hooks**: Fix `TelephonyManager`, `SubscriptionManager`, and `Build` reflection proxies in `Bcore` to properly handle API 30+ IPC signature changes and hidden API restrictions.
+> 4. **Dynamic Responsiveness**: Layouts and text sizing in Compose screens will adapt dynamically to window width and floating multi-window dimensions.
 
 ---
 
-## 2. User Experience & Visual Design
+## Proposed Changes
 
-- **App Import Flow**:
-  1. User taps the **"+" (Add App)** floating action button on the main screen.
-  2. Selecting "Select Local APK File" opens Android's system document picker (`ACTION_OPEN_DOCUMENT`).
-  3. User selects an `.apk` file from any directory (Downloads, Drive, internal storage).
-  4. BlackBox streams the selected file into internal cache (`/data/data/.../cache`) via `ContentResolver` and installs it into the virtual environment.
-  5. No runtime permission dialogs or system settings redirects are presented to the user.
+### 1. Remote Log Upload Removal & Local Storage
+- **`Bcore/src/main/java/top/niunaijun/blackbox/utils/LogSender.java`**
+  - Remove remote upload endpoint URL (`https://logs-sender-api.vercel.app/...`).
+  - Redirect crash log output to write formatted log files locally in app private storage (`/storage/emulated/0/Android/data/<package>/files/crash_logs/`).
+- **`Bcore/src/main/java/top/niunaijun/blackbox/app/configuration/ClientConfiguration.java`** & **`SimpleCrashFix.java`**
+  - Update crash handler hooks to save stack traces locally without initiating network requests.
 
-- **UI Polish & Feedback**:
-  - Direct progress indicator during SAF stream copying and installation.
-  - Toast notification confirming successful app clone/install.
+### 2. Fake Location Preview Removal
+- **`app/src/main/java/top/niunaijun/blackboxa/view/location/`** (and related location composables/activities)
+  - Remove map preview, location preview UI elements, and unnecessary preview rendering handlers.
+  - Retain core virtual location coordinates config without remote preview dependencies.
+
+### 3. Indian SIM Operator Identity Spoofing
+- **`Bcore/src/main/java/top/niunaijun/blackbox/fake/frameworks/BTelephonyManager.java`** & **`BSubManager.java`**
+  - Define Indian SIM provider profiles:
+    - **Jio**: MCC `405`, MNC `854`, Operator Name `"Jio"`, Country `"in"`.
+    - **Airtel**: MCC `404`, MNC `45`, Operator Name `"Airtel"`, Country `"in"`.
+    - **Vi**: MCC `404`, MNC `20`, Operator Name `"Vi"`, Country `"in"`.
+    - **BSNL**: MCC `404`, MNC `34`, Operator Name `"BSNL"`, Country `"in"`.
+  - Implement random provider assignment logic per virtual profile with realistic 10-digit Indian phone numbers (`9XXXXXXXXX`, `8XXXXXXXXX`, `7XXXXXXXXX`, `6XXXXXXXXX`).
+
+### 4. Android 11 (API 30) Spoofing Compatibility
+- **`Bcore/src/main/java/top/niunaijun/blackbox/fake/service/ITelephonyManagerProxy.java`** & **`ITelephonyRegistryProxy.java`**
+  - Update method proxies for API 30+ method signatures (e.g. `getNetworkOperatorName`, `getSimOperatorName`, `getNetworkCountryIso`, `getSimCountryIso`, `getSubscriberId`, `getLine1Number`).
+  - Add fallback reflection guards for Android 11 system service restrictions.
+
+### 5. Responsive UI & Dynamic Typography
+- **`app/src/main/java/top/niunaijun/blackboxa/` UI Composables**
+  - Integrate `BoxWithConstraints` and screen width breakpoints (`Compact`, `Medium`, `Expanded`).
+  - Dynamically compute text sizes and icon sizes based on available window width so text remains clear and readable in floating window or split-screen modes.
 
 ---
 
-## 3. Key Product Decisions & Trade-Offs
+## Verification Plan
 
-- **Decision 1: SAF Uri Stream Copying for Installation**
-  - *Chosen Approach*: Stream APK bytes directly from `content://` Uri via `ContentResolver` into private cache directory before invoking `BPackageInstaller`.
-  - *Why*: Allows installing APKs from any folder without needing file path read permissions on `/sdcard`.
+### Automated Build Verification
+- Execute `compile_applet` to verify zero compilation errors across `Bcore` and `app` modules.
 
-- **Decision 2: Virtual Storage Permission Interception**
-  - *Chosen Approach*: Override `IActivityManagerProxy`, `IPackageManagerProxy`, and `IAppOpsManagerProxy` so virtual permission checks for `READ_EXTERNAL_STORAGE` / `WRITE_EXTERNAL_STORAGE` return `PackageManager.PERMISSION_GRANTED`.
-  - *Why*: Cloned apps expect storage permission to be granted. Since BlackBox redirects their file operations to isolated private app folders, returning `PERMISSION_GRANTED` prevents cloned apps from crashing or stuck permission loops.
-
----
-
-## 4. Technical Architecture & Data Strategy
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Host UI (MainActivity)                   │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ SAF (ACTION_OPEN_DOCUMENT)
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│             ContentResolver (InputStream Copy)              │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ Stream to cache
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│          BlackBox Core Virtual Environment (Bcore)          │
-│  - BEnvironment (Private Sandbox Redirection)               │
-│  - IOCore (Redirects /sdcard -> /Android/data/.../blackbox) │
-│  - PermissionProxy (Spoofs PERMISSION_GRANTED to virtual)   │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Affected Files & Modifications Summary
-
-1. **`app/src/main/AndroidManifest.xml` & `Bcore/src/main/AndroidManifest.xml`**:
-   - Remove `<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>`
-   - Remove `<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>`
-   - Remove `<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>`
-
-2. **`StoragePermissionHelper.java`**:
-   - Simplify permission helper to return `true` by default for storage access, bypassing system permission prompts.
-
-3. **`MainActivity.kt`**:
-   - Remove runtime storage permission request triggers during app initialization and APK selection.
-   - Wire local APK selection directly to `ActivityResultContracts.StartActivityForResult()` with `Intent.ACTION_OPEN_DOCUMENT`.
-
-4. **`IActivityManagerProxy.java` / `IPackageManagerProxy.java` / `IAppOpsManagerProxy.java`**:
-   - Ensure virtual permission checks for `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` return `PERMISSION_GRANTED` to virtualized apps.
+### Logical Verification
+- Check that `LogSender.java` contains no HTTP network code or URL references.
+- Verify that Indian carrier MCC/MNC codes and random number generation function properly in `BTelephonyManager`.
+- Verify multi-window/small screen dynamic font size rules in UI components.

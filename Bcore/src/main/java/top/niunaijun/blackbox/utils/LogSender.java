@@ -1,100 +1,62 @@
 package top.niunaijun.blackbox.utils;
 
-import java.io.BufferedReader;
-import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.io.FileOutputStream;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
+import top.niunaijun.blackbox.BlackBoxCore;
 
 public class LogSender {
     private static final String TAG = "LogSender";
-    private static final String API_URL_TEMPLATE = "https://logs-sender-api.vercel.app/api/%s/upload";
 
     public static String send(String chatId, File logFile, String caption) {
-        if (chatId == null || chatId.isEmpty()) {
-            Slog.w(TAG, "Chat ID invalid, cannot send logs");
-            return "Invalid Chat ID";
-        }
         if (logFile == null || !logFile.exists()) {
-             Slog.w(TAG, "Log file not found: " + logFile);
-             return "Log file not found";
+            Slog.w(TAG, "Log file not found: " + logFile);
+            return "Log file not found";
         }
-
-        String urlString = String.format(API_URL_TEMPLATE, chatId);
-        String boundary = "*****" + System.currentTimeMillis() + "*****";
-        String twoHyphens = "--";
-        String lineEnd = "\r\n";
 
         try {
-            Slog.d(TAG, "Sending logs to: " + urlString);
-            URL url = new URL(urlString);
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-
-            connection.setDoInput(true);
-            connection.setDoOutput(true);
-            connection.setUseCaches(false);
-            connection.setRequestMethod("POST");
-            connection.setRequestProperty("Connection", "Keep-Alive");
-            connection.setRequestProperty("Content-Type", "multipart/form-data;boundary=" + boundary);
-
-            DataOutputStream dos = new DataOutputStream(connection.getOutputStream());
-
-            
-            if (caption != null) {
-                dos.writeBytes(twoHyphens + boundary + lineEnd);
-                dos.writeBytes("Content-Disposition: form-data; name=\"caption\"" + lineEnd);
-                dos.writeBytes(lineEnd);
-                
-                
-                dos.write(caption.getBytes("UTF-8"));
-                dos.writeBytes(lineEnd);
-            }
-
-            
-            dos.writeBytes(twoHyphens + boundary + lineEnd);
-            dos.writeBytes("Content-Disposition: form-data; name=\"file\"; filename=\"" + logFile.getName() + "\"" + lineEnd);
-            dos.writeBytes("Content-Type: text/plain" + lineEnd);
-            dos.writeBytes(lineEnd);
-
-            FileInputStream fis = new FileInputStream(logFile);
-            byte[] buffer = new byte[8192];
-            int bytesRead;
-            while ((bytesRead = fis.read(buffer)) != -1) {
-                dos.write(buffer, 0, bytesRead);
-            }
-            fis.close();
-            dos.writeBytes(lineEnd);
-            dos.writeBytes(twoHyphens + boundary + twoHyphens + lineEnd);
-            dos.flush();
-            dos.close();
-
-            int responseCode = connection.getResponseCode();
-            if (responseCode == 200 || responseCode == 201) {
-                Slog.d(TAG, "Logs sent successfully: " + responseCode);
-                return null; 
+            File storageDir = null;
+            if (BlackBoxCore.getContext() != null) {
+                storageDir = BlackBoxCore.getContext().getExternalFilesDir("crash_logs");
+                if (storageDir == null) {
+                    storageDir = new File(BlackBoxCore.getContext().getFilesDir(), "crash_logs");
+                }
             } else {
-                 String errorMsg = "HTTP " + responseCode;
-                 try {
-                     BufferedReader br = new BufferedReader(new InputStreamReader(connection.getErrorStream()));
-                     String line;
-                     StringBuilder response = new StringBuilder();
-                     while ((line = br.readLine()) != null) {
-                         response.append(line);
-                     }
-                     br.close();
-                     errorMsg += ": " + response.toString();
-                     Slog.e(TAG, "Failed to send logs. " + errorMsg);
-                 } catch (Exception e) {
-                     Slog.e(TAG, "Failed to send logs. Response Code: " + responseCode);
-                 }
-                 return errorMsg;
+                storageDir = new File(logFile.getParentFile(), "crash_logs");
             }
+
+            if (!storageDir.exists()) {
+                storageDir.mkdirs();
+            }
+
+            String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
+            File savedFile = new File(storageDir, "crash_log_" + timestamp + ".txt");
+
+            try (FileInputStream fis = new FileInputStream(logFile);
+                 FileOutputStream fos = new FileOutputStream(savedFile)) {
+                
+                if (caption != null && !caption.isEmpty()) {
+                    String header = "Caption: " + caption + "\nSaved: " + new Date().toString() + "\n\n";
+                    fos.write(header.getBytes("UTF-8"));
+                }
+
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = fis.read(buffer)) != -1) {
+                    fos.write(buffer, 0, bytesRead);
+                }
+                fos.flush();
+            }
+
+            Slog.d(TAG, "Log successfully saved locally to: " + savedFile.getAbsolutePath());
+            return null; // Null indicates success
         } catch (Exception e) {
-            Slog.e(TAG, "Error sending logs: " + e.getMessage(), e);
-            return "Exception: " + e.getMessage();
+            Slog.e(TAG, "Error saving crash log locally: " + e.getMessage(), e);
+            return "Local Save Exception: " + e.getMessage();
         }
     }
 }

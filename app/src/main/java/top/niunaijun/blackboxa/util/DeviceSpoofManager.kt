@@ -5,6 +5,14 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 import kotlin.random.Random
 
+data class IndianCarrier(
+    val name: String,
+    val mcc: String,
+    val mnc: String
+) {
+    val operatorCode: String get() = mcc + mnc
+}
+
 data class DeviceSpoofConfig(
     val brand: String = "google",
     val model: String = "Pixel 8 Pro",
@@ -14,12 +22,23 @@ data class DeviceSpoofConfig(
     val androidId: String = "e4a789c012bf34d5",
     val imei: String = "358921094829104",
     val serialNumber: String = "1A2B3C4D5E6F",
+    val simCarrierName: String = "Jio",
+    val simOperator: String = "405854",
+    val simPhoneNumber: String = "9876543210",
+    val simCountryIso: String = "in",
     val isEnabled: Boolean = true
 )
 
 object DeviceSpoofManager {
 
     private const val PREFS_NAME = "device_spoof_prefs"
+
+    val INDIAN_CARRIERS = listOf(
+        IndianCarrier("Jio", "405", "854"),
+        IndianCarrier("Airtel", "404", "45"),
+        IndianCarrier("Vi", "404", "20"),
+        IndianCarrier("BSNL", "404", "34")
+    )
 
     val PRESET_PIXEL_8_PRO = DeviceSpoofConfig(
         brand = "google",
@@ -30,6 +49,10 @@ object DeviceSpoofManager {
         androidId = "a1b2c3d4e5f60718",
         imei = "356789012345678",
         serialNumber = "P8P234892301",
+        simCarrierName = "Jio",
+        simOperator = "405854",
+        simPhoneNumber = "9876543210",
+        simCountryIso = "in",
         isEnabled = true
     )
 
@@ -42,6 +65,10 @@ object DeviceSpoofManager {
         androidId = "b9f8e7d6c5b4a321",
         imei = "359812034982103",
         serialNumber = "R58N1234567",
+        simCarrierName = "Airtel",
+        simOperator = "40445",
+        simPhoneNumber = "9812345678",
+        simCountryIso = "in",
         isEnabled = true
     )
 
@@ -54,6 +81,10 @@ object DeviceSpoofManager {
         androidId = "c3d4e5f6a1b20789",
         imei = "864521093821094",
         serialNumber = "XM14P8920194",
+        simCarrierName = "Vi",
+        simOperator = "40420",
+        simPhoneNumber = "9765432109",
+        simCountryIso = "in",
         isEnabled = true
     )
 
@@ -66,6 +97,10 @@ object DeviceSpoofManager {
         androidId = "d7c8b9a0e1f23456",
         imei = "861928374650192",
         serialNumber = "OP1298472910",
+        simCarrierName = "BSNL",
+        simOperator = "40434",
+        simPhoneNumber = "9456789012",
+        simCountryIso = "in",
         isEnabled = true
     )
 
@@ -88,6 +123,7 @@ object DeviceSpoofManager {
             saveConfig(context, userId, randomConfig)
             return randomConfig
         }
+        val carrier = INDIAN_CARRIERS.random()
         return DeviceSpoofConfig(
             brand = prefs.getString("${prefix}brand", PRESET_PIXEL_8_PRO.brand) ?: PRESET_PIXEL_8_PRO.brand,
             model = prefs.getString("${prefix}model", PRESET_PIXEL_8_PRO.model) ?: PRESET_PIXEL_8_PRO.model,
@@ -97,6 +133,10 @@ object DeviceSpoofManager {
             androidId = prefs.getString("${prefix}android_id", PRESET_PIXEL_8_PRO.androidId) ?: PRESET_PIXEL_8_PRO.androidId,
             imei = prefs.getString("${prefix}imei", PRESET_PIXEL_8_PRO.imei) ?: PRESET_PIXEL_8_PRO.imei,
             serialNumber = prefs.getString("${prefix}serial", PRESET_PIXEL_8_PRO.serialNumber) ?: PRESET_PIXEL_8_PRO.serialNumber,
+            simCarrierName = prefs.getString("${prefix}sim_carrier_name", carrier.name) ?: carrier.name,
+            simOperator = prefs.getString("${prefix}sim_operator", carrier.operatorCode) ?: carrier.operatorCode,
+            simPhoneNumber = prefs.getString("${prefix}sim_phone_number", generateRandomIndianPhoneNumber()) ?: generateRandomIndianPhoneNumber(),
+            simCountryIso = prefs.getString("${prefix}sim_country_iso", "in") ?: "in",
             isEnabled = prefs.getBoolean("${prefix}enabled", true)
         )
     }
@@ -113,6 +153,10 @@ object DeviceSpoofManager {
             putString("${prefix}android_id", config.androidId)
             putString("${prefix}imei", config.imei)
             putString("${prefix}serial", config.serialNumber)
+            putString("${prefix}sim_carrier_name", config.simCarrierName)
+            putString("${prefix}sim_operator", config.simOperator)
+            putString("${prefix}sim_phone_number", config.simPhoneNumber)
+            putString("${prefix}sim_country_iso", config.simCountryIso)
             putBoolean("${prefix}enabled", config.isEnabled)
         }
     }
@@ -129,6 +173,10 @@ object DeviceSpoofManager {
             remove("${prefix}android_id")
             remove("${prefix}imei")
             remove("${prefix}serial")
+            remove("${prefix}sim_carrier_name")
+            remove("${prefix}sim_operator")
+            remove("${prefix}sim_phone_number")
+            remove("${prefix}sim_country_iso")
             remove("${prefix}enabled")
         }
     }
@@ -139,7 +187,6 @@ object DeviceSpoofManager {
     }
 
     fun generateRandomImei(): String {
-        // Standard 15-digit TAC + SNR + Luhn
         val prefix = if (Random.nextBoolean()) "35" else "86"
         val remaining = (1..12).map { Random.nextInt(10) }.joinToString("")
         val base = prefix + remaining
@@ -152,12 +199,23 @@ object DeviceSpoofManager {
         return (1..12).map { chars[Random.nextInt(chars.length)] }.joinToString("")
     }
 
+    fun generateRandomIndianPhoneNumber(): String {
+        val startDigit = listOf("6", "7", "8", "9").random()
+        val rest = (1..9).map { Random.nextInt(10) }.joinToString("")
+        return startDigit + rest
+    }
+
     fun generateRandomConfig(currentConfig: DeviceSpoofConfig = PRESET_PIXEL_8_PRO): DeviceSpoofConfig {
         val basePreset = PRESETS.random().second
+        val randomCarrier = INDIAN_CARRIERS.random()
         return basePreset.copy(
             androidId = generateRandomAndroidId(),
             imei = generateRandomImei(),
-            serialNumber = generateRandomSerial()
+            serialNumber = generateRandomSerial(),
+            simCarrierName = randomCarrier.name,
+            simOperator = randomCarrier.operatorCode,
+            simPhoneNumber = generateRandomIndianPhoneNumber(),
+            simCountryIso = "in"
         )
     }
 

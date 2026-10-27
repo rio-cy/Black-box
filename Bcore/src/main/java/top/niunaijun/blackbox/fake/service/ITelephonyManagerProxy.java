@@ -2,24 +2,18 @@ package top.niunaijun.blackbox.fake.service;
 
 import android.content.Context;
 import android.os.IBinder;
-import android.telephony.TelephonyManager;
 import android.util.Log;
 
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.List;
 
 import black.android.os.BRServiceManager;
 import black.com.android.internal.telephony.BRITelephonyStub;
 import top.niunaijun.blackbox.BlackBoxCore;
 import top.niunaijun.blackbox.app.BActivityThread;
-import top.niunaijun.blackbox.entity.location.BCell;
-import top.niunaijun.blackbox.fake.frameworks.BLocationManager;
 import top.niunaijun.blackbox.fake.hook.BinderInvocationStub;
 import top.niunaijun.blackbox.fake.hook.MethodHook;
 import top.niunaijun.blackbox.fake.hook.ProxyMethod;
 import top.niunaijun.blackbox.utils.Md5Utils;
-
 
 public class ITelephonyManagerProxy extends BinderInvocationStub {
     public static final String TAG = "ITelephonyManagerProxy";
@@ -81,19 +75,186 @@ public class ITelephonyManagerProxy extends BinderInvocationStub {
         }
     }
 
-    @ProxyMethod("isUserDataEnabled")
-    public static class IsUserDataEnabled extends MethodHook {
+    @ProxyMethod("getNetworkOperator")
+    public static class GetNetworkOperator extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            return true;
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getSimOperator(userId);
+            }
+            try {
+                return method.invoke(who, args);
+            } catch (Throwable e) {
+                return "405854"; // Default Jio fallback
+            }
         }
     }
 
+    @ProxyMethod("getNetworkOperatorName")
+    public static class GetNetworkOperatorName extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getSimOperatorName(userId);
+            }
+            try {
+                return method.invoke(who, args);
+            } catch (Throwable e) {
+                return "Jio";
+            }
+        }
+    }
+
+    @ProxyMethod("getNetworkOperatorForPhoneId")
+    public static class GetNetworkOperatorForPhoneId extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getSimOperator(userId);
+            }
+            try {
+                return method.invoke(who, args);
+            } catch (Throwable e) {
+                return "405854";
+            }
+        }
+    }
+
+    @ProxyMethod("getNetworkOperatorNameForPhoneId")
+    public static class GetNetworkOperatorNameForPhoneId extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getSimOperatorName(userId);
+            }
+            try {
+                return method.invoke(who, args);
+            } catch (Throwable e) {
+                return "Jio";
+            }
+        }
+    }
+
+    @ProxyMethod("getSimOperator")
+    public static class GetSimOperator extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getSimOperator(userId);
+            }
+            try {
+                return method.invoke(who, args);
+            } catch (Throwable e) {
+                return "405854";
+            }
+        }
+    }
+
+    @ProxyMethod("getSimOperatorName")
+    public static class GetSimOperatorName extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getSimOperatorName(userId);
+            }
+            try {
+                return method.invoke(who, args);
+            } catch (Throwable e) {
+                return "Jio";
+            }
+        }
+    }
+
+    @ProxyMethod("getSimOperatorForPhoneId")
+    public static class GetSimOperatorForPhoneId extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getSimOperator(userId);
+            }
+            try {
+                return method.invoke(who, args);
+            } catch (Throwable e) {
+                return "405854";
+            }
+        }
+    }
+
+    @ProxyMethod("getSimOperatorNameForPhoneId")
+    public static class GetSimOperatorNameForPhoneId extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getSimOperatorName(userId);
+            }
+            try {
+                return method.invoke(who, args);
+            } catch (Throwable e) {
+                return "Jio";
+            }
+        }
+    }
+
+    @ProxyMethod("getNetworkCountryIso")
+    public static class GetNetworkCountryIso extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            return "in";
+        }
+    }
+
+    @ProxyMethod("getNetworkCountryIsoForPhoneId")
+    public static class GetNetworkCountryIsoForPhoneId extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            return "in";
+        }
+    }
+
+    @ProxyMethod("getSimCountryIso")
+    public static class GetSimCountryIso extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            return "in";
+        }
+    }
+
+    @ProxyMethod("getSimCountryIsoForPhoneId")
+    public static class GetSimCountryIsoForPhoneId extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            return "in";
+        }
+    }
+
+    @ProxyMethod("getLine1Number")
+    public static class GetLine1Number extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getPhoneNumber(userId);
+            }
+            return null;
+        }
+    }
 
     @ProxyMethod("getLine1NumberForDisplay")
     public static class getLine1NumberForDisplay extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getPhoneNumber(userId);
+            }
             return null;
         }
     }
@@ -104,7 +265,7 @@ public class ITelephonyManagerProxy extends BinderInvocationStub {
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
             int userId = BActivityThread.getUserId();
             if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
-                return DeviceSpoofHelper.getSpoofedImei(userId);
+                return DeviceSpoofHelper.getSubscriberId(userId);
             }
             return Md5Utils.md5(BlackBoxCore.getHostPkg());
         }
@@ -122,71 +283,11 @@ public class ITelephonyManagerProxy extends BinderInvocationStub {
         }
     }
 
-    @ProxyMethod("getCellLocation")
-    public static class GetCellLocation extends MethodHook {
+    @ProxyMethod("isUserDataEnabled")
+    public static class IsUserDataEnabled extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            Log.d(TAG, "getCellLocation");
-            if (BLocationManager.isFakeLocationEnable()) {
-                BCell cell = BLocationManager.get().getCell(BActivityThread.getUserId(), BActivityThread.getAppPackageName());
-                if (cell != null) {
-                    
-                    return null;
-                }
-            }
-            return method.invoke(who, args);
-        }
-    }
-
-    @ProxyMethod("getAllCellInfo")
-    public static class GetAllCellInfo extends MethodHook {
-        @Override
-        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            if (BLocationManager.isFakeLocationEnable()) {
-                List<BCell> cell = BLocationManager.get().getAllCell(BActivityThread.getUserId(), BActivityThread.getAppPackageName());
-                
-                return cell;
-            }
-            try {
-                return method.invoke(who, args);
-            } catch (Throwable e) {
-                return null;
-            }
-        }
-    }
-
-    @ProxyMethod("getNetworkOperator")
-    public static class GetNetworkOperator extends MethodHook {
-        @Override
-        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            Log.d(TAG, "getNetworkOperator");
-            return method.invoke(who, args);
-        }
-    }
-
-    @ProxyMethod("getNetworkTypeForSubscriber")
-    public static class GetNetworkTypeForSubscriber extends MethodHook {
-        @Override
-        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            try {
-                return method.invoke(who, args);
-            } catch (Throwable e) {
-                return 0;
-            }
-        }
-    }
-
-    @ProxyMethod("getNeighboringCellInfo")
-    public static class GetNeighboringCellInfo extends MethodHook {
-        @Override
-        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            Log.d(TAG, "getNeighboringCellInfo");
-            if (BLocationManager.isFakeLocationEnable()) {
-                List<BCell> cell = BLocationManager.get().getNeighboringCell(BActivityThread.getUserId(), BActivityThread.getAppPackageName());
-                
-                return null;
-            }
-            return method.invoke(who, args);
+            return true;
         }
     }
 }

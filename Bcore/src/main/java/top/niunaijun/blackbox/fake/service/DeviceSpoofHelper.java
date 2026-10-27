@@ -12,7 +12,8 @@ import top.niunaijun.blackbox.BlackBoxCore;
 
 /**
  * Helper to retrieve, manage, and inject spoofed device hardware identities
- * (Build fields, Android ID, IMEI, Serial) into virtual client processes.
+ * (Build fields, Android ID, IMEI, Serial) and Indian SIM Operator Telephony profiles
+ * into virtual client processes.
  */
 public class DeviceSpoofHelper {
     public static final String TAG = "DeviceSpoofHelper";
@@ -34,6 +35,20 @@ public class DeviceSpoofHelper {
         }
     }
 
+    public static class IndianCarrier {
+        public final String name;
+        public final String mcc;
+        public final String mnc;
+        public final String operatorCode;
+
+        public IndianCarrier(String name, String mcc, String mnc) {
+            this.name = name;
+            this.mcc = mcc;
+            this.mnc = mnc;
+            this.operatorCode = mcc + mnc;
+        }
+    }
+
     private static final DevicePreset[] PRESETS = new DevicePreset[]{
             new DevicePreset("google", "Pixel 8 Pro", "Google", "husky",
                     "google/husky/husky:14/UD1A.231105.004/11010452:user/release-keys"),
@@ -43,6 +58,13 @@ public class DeviceSpoofHelper {
                     "Xiaomi/shennong/shennong:14/UKQ1.230804.001/V816.0.4.0.UNBCNXM:user/release-keys"),
             new DevicePreset("OnePlus", "CPH2581", "OnePlus", "OP595DL1",
                     "OnePlus/CPH2581/OP595DL1:14/UKQ1.230924.001/T.11867c4-1-2:user/release-keys")
+    };
+
+    private static final IndianCarrier[] INDIAN_CARRIERS = new IndianCarrier[]{
+            new IndianCarrier("Jio", "405", "854"),
+            new IndianCarrier("Airtel", "404", "45"),
+            new IndianCarrier("Vi", "404", "20"),
+            new IndianCarrier("BSNL", "404", "34")
     };
 
     private static SharedPreferences getPrefs() {
@@ -65,9 +87,11 @@ public class DeviceSpoofHelper {
         if (!prefs.contains(prefix + "enabled")) {
             Random random = new Random();
             DevicePreset preset = PRESETS[random.nextInt(PRESETS.length)];
+            IndianCarrier carrier = INDIAN_CARRIERS[random.nextInt(INDIAN_CARRIERS.length)];
             String androidId = generateRandomHex(16);
             String imei = generateRandomImei(random);
             String serial = generateRandomAlphanumeric(12);
+            String phoneNumber = generateRandomIndianPhoneNumber(random);
 
             prefs.edit()
                     .putString(prefix + "brand", preset.brand)
@@ -78,9 +102,13 @@ public class DeviceSpoofHelper {
                     .putString(prefix + "android_id", androidId)
                     .putString(prefix + "imei", imei)
                     .putString(prefix + "serial", serial)
+                    .putString(prefix + "sim_carrier_name", carrier.name)
+                    .putString(prefix + "sim_operator", carrier.operatorCode)
+                    .putString(prefix + "sim_phone_number", phoneNumber)
+                    .putString(prefix + "sim_country_iso", "in")
                     .putBoolean(prefix + "enabled", true)
                     .apply();
-            Log.d(TAG, "Generated and saved random spoof config for user " + userId + ": " + preset.model);
+            Log.d(TAG, "Generated spoof config for user " + userId + ": " + preset.model + ", SIM: " + carrier.name);
         }
     }
 
@@ -106,6 +134,43 @@ public class DeviceSpoofHelper {
         if (prefs == null) return "1A2B3C4D5E6F";
         String prefix = "user_" + userId + "_";
         return prefs.getString(prefix + "serial", "1A2B3C4D5E6F");
+    }
+
+    public static String getSimOperatorName(int userId) {
+        ensureProfileConfigExists(userId);
+        SharedPreferences prefs = getPrefs();
+        if (prefs == null) return "Jio";
+        String prefix = "user_" + userId + "_";
+        return prefs.getString(prefix + "sim_carrier_name", "Jio");
+    }
+
+    public static String getSimOperator(int userId) {
+        ensureProfileConfigExists(userId);
+        SharedPreferences prefs = getPrefs();
+        if (prefs == null) return "405854";
+        String prefix = "user_" + userId + "_";
+        return prefs.getString(prefix + "sim_operator", "405854");
+    }
+
+    public static String getSimCountryIso(int userId) {
+        return "in";
+    }
+
+    public static String getPhoneNumber(int userId) {
+        ensureProfileConfigExists(userId);
+        SharedPreferences prefs = getPrefs();
+        if (prefs == null) return "9876543210";
+        String prefix = "user_" + userId + "_";
+        return prefs.getString(prefix + "sim_phone_number", "9876543210");
+    }
+
+    public static String getSubscriberId(int userId) {
+        String simOp = getSimOperator(userId);
+        String imei = getSpoofedImei(userId);
+        if (imei != null && imei.length() >= 9) {
+            return simOp + imei.substring(imei.length() - 9);
+        }
+        return simOp + "987654321";
     }
 
     /**
@@ -180,6 +245,16 @@ public class DeviceSpoofHelper {
         String base = sb.toString();
         int checkDigit = calculateLuhn(base);
         return base + checkDigit;
+    }
+
+    private static String generateRandomIndianPhoneNumber(Random random) {
+        String[] startDigits = new String[]{"6", "7", "8", "9"};
+        String start = startDigits[random.nextInt(startDigits.length)];
+        StringBuilder sb = new StringBuilder(start);
+        for (int i = 0; i < 9; i++) {
+            sb.append(random.nextInt(10));
+        }
+        return sb.toString();
     }
 
     private static int calculateLuhn(String numberString) {

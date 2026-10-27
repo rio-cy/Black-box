@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for migrating BlackBox from legacy storage permissions to Storage Access Framework (SAF) and virtual storage isolation.",
-  "updatedAt":  "2026-10-27T14:46:52.795979573Z",
+  "summary":  "Implementation plan for removing remote log uploads, saving crash logs locally, removing fake location preview, adding Indian SIM device identity spoofing (Jio, Airtel, Vi, BSNL), fixing Android 11 identity spoofing hooks, and scaling UI responsiveness for floating/small window modes.",
+  "updatedAt":  "2026-10-27T15:25:37.670588768Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

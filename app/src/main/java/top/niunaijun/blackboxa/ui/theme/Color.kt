@@ -9,8 +9,8 @@ val CyberMintLight = Color(0xFF34D399)
 
 val DarkBackground = Color(0xFF0F1117)
 val DarkSurface = Color(0xFF1A1D27)
-val DarkSurfaceVariant = Color(0xFF262B3A)
-val DarkOnSurface = Color(0xFFE2E8F0)
+val DarkSurfaceVariant = Color(0xFF252A38)
+val DarkOnSurface = Color(0xFFF8FAFC)
 val DarkOnSurfaceVariant = Color(0xFF94A3B8)
 
 val LightBackground = Color(0xFFF8FAFC)

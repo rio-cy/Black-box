@@ -45,18 +45,4 @@
         android:textColor="@color/secondary_text"
         android:textSize="14sp"
         android:lineSpacingExtra="3dp"
-        android:gravity="center" />
-
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btn_clone_app"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:minHeight="48dp"
-        android:paddingHorizontal="24dp"
-        app:cornerRadius="12dp"
-        android:text="@string/fake_location_empty_action"
-        android:textSize="14sp"
-        android:textStyle="bold" />
-
-</LinearLayout>
+        android:gravity="center" /></LinearLayout>

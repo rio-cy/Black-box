@@ -3,11 +3,11 @@ package top.niunaijun.blackbox.fake.service;
 import java.lang.reflect.Method;
 
 import black.android.telephony.BRTelephonyManager;
+import top.niunaijun.blackbox.app.BActivityThread;
 import top.niunaijun.blackbox.fake.hook.ClassInvocationStub;
 import top.niunaijun.blackbox.fake.hook.MethodHook;
 import top.niunaijun.blackbox.fake.hook.ProxyMethod;
 import top.niunaijun.blackbox.utils.MethodParameterUtils;
-
 
 public class IPhoneSubInfoProxy extends ClassInvocationStub {
     public static final String TAG = "IPhoneSubInfoProxy";
@@ -42,11 +42,82 @@ public class IPhoneSubInfoProxy extends ClassInvocationStub {
         return false;
     }
 
+    @ProxyMethod("getLine1Number")
+    public static class GetLine1Number extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getPhoneNumber(userId);
+            }
+            return null;
+        }
+    }
 
     @ProxyMethod("getLine1NumberForSubscriber")
     public static class getLine1NumberForSubscriber extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getPhoneNumber(userId);
+            }
+            return null;
+        }
+    }
+
+    @ProxyMethod("getSubscriberId")
+    public static class GetSubscriberId extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getSubscriberId(userId);
+            }
+            try {
+                return method.invoke(who, args);
+            } catch (Throwable e) {
+                return "405854987654321";
+            }
+        }
+    }
+
+    @ProxyMethod("getSubscriberIdForSubscriber")
+    public static class GetSubscriberIdForSubscriber extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getSubscriberId(userId);
+            }
+            try {
+                return method.invoke(who, args);
+            } catch (Throwable e) {
+                return "405854987654321";
+            }
+        }
+    }
+
+    @ProxyMethod("getIccSerialNumber")
+    public static class GetIccSerialNumber extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getSpoofedSerial(userId);
+            }
+            return null;
+        }
+    }
+
+    @ProxyMethod("getIccSerialNumberForSubscriber")
+    public static class GetIccSerialNumberForSubscriber extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getSpoofedSerial(userId);
+            }
             return null;
         }
     }
