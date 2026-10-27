@@ -72,8 +72,8 @@
     <string name="fake_location_empty_action">Clone an App</string>
     <string name="permission_guide_title">Sandbox Setup &amp; Permissions</string>
     <string name="permission_guide_desc">BlackBox requires specific device access to isolate, virtualize, and run Android applications safely.</string>
-    <string name="permission_storage_title">All Files Storage Access</string>
-    <string name="permission_storage_desc">Essential to load APK files from storage, persist sandbox app data, and avoid container file corruption.</string>
+    <string name="permission_storage_title">Storage Access Framework (SAF)</string>
+    <string name="permission_storage_desc">BlackBox uses Storage Access Framework (SAF) to select external APKs securely and stores sandboxed app data in isolated private app storage without requiring broad device storage permissions.</string>
     <string name="permission_notification_title">System Notifications</string>
     <string name="permission_notification_desc">Required to display active sandboxed app notifications, push events, and daemon services.</string>
     <string name="permission_battery_title">Battery Optimization</string>

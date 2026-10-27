@@ -1,35 +1,87 @@
-# BlackBox Enhancement & Bug Fixes Plan
+# SAF Migration & Storage Permission Removal Plan
 
-## Completed Tasks
-- [x] **Native Lib Packaging (`libblackbox.so`)**: Placed native `.so` libraries for `arm64-v8a`, `armeabi-v7a`, `x86`, and `x86_64` into `src/main/jniLibs` across `:app` and `:Bcore`. Verified that `libblackbox.so` is packaged into the built APK.
-- [x] **Fake Location Preview UI & Empty State**:
-  - Redesigned `item_fake.xml` with MaterialCardView, elevation, badge indicators, and edit actions.
-  - Created `view_empty_fake_location.xml` with empty state illustration, title, description, and "Clone an App" direct button.
-  - Wired `btn_clone_app` in `FakeManagerActivity.kt` to launch `ListActivity`.
-- [x] **Installation Progress UI**:
-  - Added `InstallProgress` data model and LiveData in `AppsViewModel`.
-  - Added centered modal dialog with app icon, name, and circular spinner in Compose `MainActivity`.
-- [x] **Clone from Storage & Installed Apps Fix**:
-  - Updated `AppsRepository` to load user and system apps, tagging them with `isSystemApp`.
-  - Added a "System Apps" toggle filter chip in `ListActivity.kt`.
-  - Upgraded file picker to `ActivityResultContracts.OpenDocument()` with APK MIME types and safe ContentResolver file copying in `AppsRepository`.
-- [x] **First-Launch Permission Onboarding**:
-  - Added full-screen onboarding screen in `MainActivity.kt` explaining Storage (`MANAGE_EXTERNAL_STORAGE`), Notifications (`POST_NOTIFICATIONS`), and Battery Optimization with interactive grant buttons.
-- [x] **Profile Switching Flicker Fix**:
-  - Implemented `userAppsCache` in `AppsViewModel` to eliminate blank flashes during profile tab switches.
-  - Added `Crossfade` animation between profile app lists in `MainActivity.kt`.
-- [x] **Clean App Uninstallation Fix**:
-  - Added `BlackBoxCore.get().stopPackage(packageName, userID)` with process lock release before invoking `uninstallPackageAsUser`.
-- [x] **Device Identity Spoofing**:
-  - Created `DeviceSpoofHelper` with hardware presets and auto-generation per virtual profile.
-  - Hooked static `Build` fields via reflection in `BActivityThread.handleBindApplication`.
-  - Hooked `Settings.Secure.ANDROID_ID` in `SystemProviderStub` and `ISettingsProviderProxy`.
-  - Hooked IMEI and subscriber ID in `ITelephonyManagerProxy`.
-  - Hooked serial number in `IDeviceIdentifiersPolicyProxy`.
-  - Updated `DeviceSpoofManager.kt` and `MainActivity.kt` to auto-generate randomized profiles on user creation.
-- [x] **GitHub Workflow & CI Fixes**:
-  - Removed outdated `setup-android` action; set up JDK 21 and pre-installed Android SDK on `ubuntu-latest`.
-  - Removed Telegram upload step and added GitHub Actions artifact uploads for APKs and AARs.
-- [x] **Compilation & Verification**:
-  - Verified with `compile_applet`.
-  - Verified `libblackbox.so` present in all architectures inside `app-debug.apk`.
+Complete removal of legacy storage permissions (`READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `MANAGE_EXTERNAL_STORAGE`) in favor of Storage Access Framework (`ACTION_OPEN_DOCUMENT`) for APK importing and virtualized isolated storage for cloned applications.
+
+## User Review & Critical Decisions
+
+> [!IMPORTANT]
+> The following choices were confirmed by the user during the Phase 1 interview:
+
+- **Confirmed Decision 1 (APK Importing)**: Use standard Android SAF file picker (`ACTION_OPEN_DOCUMENT`) without requesting any broad storage permissions.
+- **Confirmed Decision 2 (Virtual Storage)**: Isolate cloned applications inside BlackBox's private app directory (`/Android/data/top.niunaijun.blackbox/files/blackbox/`) and spoof virtual storage checks (`checkSelfPermission`) to return `PERMISSION_GRANTED` to virtual apps.
+- **Confirmed Decision 3 (Manifest Cleanup)**: Completely remove legacy storage permission declarations from `AndroidManifest.xml` and eliminate runtime storage permission prompts from `MainActivity.kt` and `StoragePermissionHelper.java`.
+
+---
+
+## 1. Overview & Core Concept
+
+- **What It Does**: Upgrades BlackBox to a zero-storage-permission model. APK files can be imported via system SAF file picking. Cloned applications operate seamlessly inside BlackBox's isolated storage sandbox without prompting the host user for phone storage permissions.
+- **Target Audience**: Users seeking privacy-respecting virtual app cloning without granting sensitive device-wide storage access permissions.
+- **Key Value**: Enhanced user privacy, full Google Play policy compliance, and clean installation UX using native Android document pickers.
+
+---
+
+## 2. User Experience & Visual Design
+
+- **App Import Flow**:
+  1. User taps the **"+" (Add App)** floating action button on the main screen.
+  2. Selecting "Select Local APK File" opens Android's system document picker (`ACTION_OPEN_DOCUMENT`).
+  3. User selects an `.apk` file from any directory (Downloads, Drive, internal storage).
+  4. BlackBox streams the selected file into internal cache (`/data/data/.../cache`) via `ContentResolver` and installs it into the virtual environment.
+  5. No runtime permission dialogs or system settings redirects are presented to the user.
+
+- **UI Polish & Feedback**:
+  - Direct progress indicator during SAF stream copying and installation.
+  - Toast notification confirming successful app clone/install.
+
+---
+
+## 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1: SAF Uri Stream Copying for Installation**
+  - *Chosen Approach*: Stream APK bytes directly from `content://` Uri via `ContentResolver` into private cache directory before invoking `BPackageInstaller`.
+  - *Why*: Allows installing APKs from any folder without needing file path read permissions on `/sdcard`.
+
+- **Decision 2: Virtual Storage Permission Interception**
+  - *Chosen Approach*: Override `IActivityManagerProxy`, `IPackageManagerProxy`, and `IAppOpsManagerProxy` so virtual permission checks for `READ_EXTERNAL_STORAGE` / `WRITE_EXTERNAL_STORAGE` return `PackageManager.PERMISSION_GRANTED`.
+  - *Why*: Cloned apps expect storage permission to be granted. Since BlackBox redirects their file operations to isolated private app folders, returning `PERMISSION_GRANTED` prevents cloned apps from crashing or stuck permission loops.
+
+---
+
+## 4. Technical Architecture & Data Strategy
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Host UI (MainActivity)                   │
+└──────────────────────────────┬──────────────────────────────┘
+                               │ SAF (ACTION_OPEN_DOCUMENT)
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│             ContentResolver (InputStream Copy)              │
+└──────────────────────────────┬──────────────────────────────┘
+                               │ Stream to cache
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│          BlackBox Core Virtual Environment (Bcore)          │
+│  - BEnvironment (Private Sandbox Redirection)               │
+│  - IOCore (Redirects /sdcard -> /Android/data/.../blackbox) │
+│  - PermissionProxy (Spoofs PERMISSION_GRANTED to virtual)   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Affected Files & Modifications Summary
+
+1. **`app/src/main/AndroidManifest.xml` & `Bcore/src/main/AndroidManifest.xml`**:
+   - Remove `<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>`
+   - Remove `<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>`
+   - Remove `<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>`
+
+2. **`StoragePermissionHelper.java`**:
+   - Simplify permission helper to return `true` by default for storage access, bypassing system permission prompts.
+
+3. **`MainActivity.kt`**:
+   - Remove runtime storage permission request triggers during app initialization and APK selection.
+   - Wire local APK selection directly to `ActivityResultContracts.StartActivityForResult()` with `Intent.ACTION_OPEN_DOCUMENT`.
+
+4. **`IActivityManagerProxy.java` / `IPackageManagerProxy.java` / `IAppOpsManagerProxy.java`**:
+   - Ensure virtual permission checks for `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` return `PERMISSION_GRANTED` to virtualized apps.

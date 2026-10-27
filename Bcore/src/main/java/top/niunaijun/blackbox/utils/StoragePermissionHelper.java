@@ -23,119 +23,35 @@ public class StoragePermissionHelper {
     
     
     public static boolean hasAllFilesAccess() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            return Environment.isExternalStorageManager();
-        } else {
-            
-            return true;
-        }
+        return true;
     }
-    
-    
+
     public static boolean hasStoragePermission(Context context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            
-            return ContextCompat.checkSelfPermission(context, 
-                    Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED ||
-                   ContextCompat.checkSelfPermission(context, 
-                    Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED ||
-                   ContextCompat.checkSelfPermission(context, 
-                    Manifest.permission.READ_MEDIA_AUDIO) == PackageManager.PERMISSION_GRANTED;
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            
-            return Environment.isExternalStorageManager() ||
-                   ContextCompat.checkSelfPermission(context, 
-                    Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
-        } else {
-            
-            return ContextCompat.checkSelfPermission(context, 
-                    Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED &&
-                   ContextCompat.checkSelfPermission(context, 
-                    Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
-        }
+        return true;
     }
-    
-    
+
     public static boolean hasFullFileAccess(Context context) {
-        return hasAllFilesAccess() && hasStoragePermission(context);
+        return true;
     }
-    
-    
+
     public static void requestAllFilesAccess(Activity activity) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!Environment.isExternalStorageManager()) {
-                try {
-                    Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
-                    intent.setData(Uri.parse("package:" + activity.getPackageName()));
-                    activity.startActivityForResult(intent, REQUEST_CODE_MANAGE_STORAGE);
-                } catch (Exception e) {
-                    
-                    Intent intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
-                    activity.startActivityForResult(intent, REQUEST_CODE_MANAGE_STORAGE);
-                }
-            }
-        }
+        // SAF & Private isolated storage model: no broad storage permission required
     }
-    
-    
+
     public static void requestAllFilesAccessForPackage(Activity activity, String packageName) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            try {
-                Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
-                intent.setData(Uri.parse("package:" + packageName));
-                activity.startActivityForResult(intent, REQUEST_CODE_MANAGE_STORAGE);
-            } catch (Exception e) {
-                
-                Intent intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
-                activity.startActivityForResult(intent, REQUEST_CODE_MANAGE_STORAGE);
-            }
-        }
+        // SAF & Private isolated storage model: no broad storage permission required
     }
-    
-    
+
     public static void requestStoragePermission(Activity activity) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            
-            ActivityCompat.requestPermissions(activity,
-                    new String[]{
-                            Manifest.permission.READ_MEDIA_IMAGES,
-                            Manifest.permission.READ_MEDIA_VIDEO,
-                            Manifest.permission.READ_MEDIA_AUDIO
-                    },
-                    REQUEST_CODE_STORAGE_PERMISSION);
-        } else {
-            
-            ActivityCompat.requestPermissions(activity,
-                    new String[]{
-                            Manifest.permission.READ_EXTERNAL_STORAGE,
-                            Manifest.permission.WRITE_EXTERNAL_STORAGE
-                    },
-                    REQUEST_CODE_STORAGE_PERMISSION);
-        }
+        // SAF & Private isolated storage model: no broad storage permission required
     }
-    
-    
+
     public static void requestFullFileAccess(Activity activity) {
-        
-        if (!hasStoragePermission(activity)) {
-            requestStoragePermission(activity);
-        }
-        
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
-            requestAllFilesAccess(activity);
-        }
+        // SAF & Private isolated storage model: no broad storage permission required
     }
-    
-    
+
     public static boolean shouldShowStorageRationale(Activity activity) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            return ActivityCompat.shouldShowRequestPermissionRationale(activity, 
-                    Manifest.permission.READ_MEDIA_IMAGES);
-        } else {
-            return ActivityCompat.shouldShowRequestPermissionRationale(activity, 
-                    Manifest.permission.READ_EXTERNAL_STORAGE);
-        }
+        return false;
     }
     
     

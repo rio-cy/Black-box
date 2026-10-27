@@ -313,11 +313,13 @@ class MainActivity : AppCompatActivity() {
         val hasCompleted = prefs.getBoolean("has_completed_onboarding", false)
         if (!hasCompleted && (!hasStoragePermission || !hasNotificationPermission)) {
             showPermissionOnboarding = true
+        } else {
+            showPermissionOnboarding = false
         }
     }
 
     private fun completeOnboarding() {
-        getSharedPreferences("app_permission_prefs", Context.MODE_PRIVATE).edit {
+        getSharedPreferences("app_permission_prefs", Context.MODE_PRIVATE).edit(commit = true) {
             putBoolean("has_completed_onboarding", true)
         }
         showPermissionOnboarding = false
@@ -343,25 +345,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestStorageAccess() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!Environment.isExternalStorageManager()) {
-                try {
-                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                        data = Uri.parse("package:$packageName")
-                    }
-                    storagePermissionResult.launch(intent)
-                } catch (_: Exception) {
-                    try {
-                        val fallback = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-                        storagePermissionResult.launch(fallback)
-                    } catch (_: Exception) {}
-                }
-            } else {
-                requestRuntimeStoragePermissions()
-            }
-        } else {
-            requestRuntimeStoragePermissions()
-        }
+        Toast.makeText(this, "Storage Access Framework is active. Isolated app storage ready.", Toast.LENGTH_SHORT).show()
+        refreshPermissions()
     }
 
     private fun requestRuntimeStoragePermissions() {
