@@ -556,16 +556,6 @@ fun MainDashboardScreen(
                                     Icon(imageVector = Icons.Default.Edit, contentDescription = null)
                                 }
                             )
-                            DropdownMenuItem(
-                                text = { Text("Device Identity Spoofing") },
-                                onClick = {
-                                    showMoreMenu = false
-                                    onOpenDeviceSpoof(currentUser)
-                                },
-                                leadingIcon = {
-                                    Icon(imageVector = Icons.Default.PhoneAndroid, contentDescription = null)
-                                }
-                            )
                             if (currentUser != 0) {
                                 DropdownMenuItem(
                                     text = { Text("Delete Profile", color = MaterialTheme.colorScheme.error) },
