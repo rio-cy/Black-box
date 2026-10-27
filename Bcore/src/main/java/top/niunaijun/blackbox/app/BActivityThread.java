@@ -425,6 +425,11 @@ public class BActivityThread extends IBActivityThread.Stub {
         }
         Application application;
         try {
+            try {
+                top.niunaijun.blackbox.fake.service.DeviceSpoofHelper.applyBuildSpoof(getUserId());
+            } catch (Throwable t) {
+                Slog.w(TAG, "Failed to applyBuildSpoof: " + t.getMessage());
+            }
             onBeforeCreateApplication(packageName, processName, packageContext);
             
             

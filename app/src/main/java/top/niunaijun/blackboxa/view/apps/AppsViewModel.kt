@@ -1,57 +1,50 @@
 package top.niunaijun.blackboxa.view.apps
 
+import android.graphics.drawable.Drawable
 import androidx.lifecycle.MutableLiveData
 import top.niunaijun.blackboxa.bean.AppInfo
 import top.niunaijun.blackboxa.data.AppsRepository
 import top.niunaijun.blackboxa.view.base.BaseViewModel
-import android.util.Log
 
+data class InstallProgress(
+    val isInstalling: Boolean = false,
+    val appName: String = "",
+    val packageName: String = "",
+    val icon: Drawable? = null
+)
 
 class AppsViewModel(private val repo: AppsRepository) : BaseViewModel() {
 
     val appsLiveData = MutableLiveData<List<AppInfo>>()
-
     val resultLiveData = MutableLiveData<String>()
-
     val launchLiveData = MutableLiveData<Boolean>()
-
-    
     val updateSortLiveData = MutableLiveData<Boolean>()
+    val installProgressLiveData = MutableLiveData<InstallProgress>()
+
+    // In-memory cache per user profile to eliminate switching flicker
+    private val userAppsCache = mutableMapOf<Int, List<AppInfo>>()
 
     fun getInstalledApps(userId: Int) {
-        launchOnUI {
-            repo.getVmInstallList(userId, appsLiveData)
-        }
+        getInstalledAppsWithRetry(userId)
     }
-    
-    
-    fun getInstalledAppsWithRetry(userId: Int, maxRetries: Int = 3) {
-        var retryCount = 0
-        
-        fun attemptLoad() {
-            launchOnUI {
-                repo.getVmInstallList(userId, appsLiveData)
-                
-                
-                val currentApps = appsLiveData.value
-                if ((currentApps == null || currentApps.isEmpty()) && retryCount < maxRetries) {
-                    retryCount++
-                    Log.d("AppsViewModel", "No apps loaded, retrying... (${retryCount}/${maxRetries})")
-                    
-                    
-                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                        attemptLoad()
-                    }, 1000) 
-                }
+
+    fun getInstalledAppsWithRetry(userId: Int) {
+        // Emit cached apps immediately to prevent UI blanking
+        val cached = userAppsCache[userId]
+        if (cached != null) {
+            appsLiveData.value = cached
+        }
+
+        launchOnUI {
+            repo.getVmInstallList(userId, appsLiveData) { freshList ->
+                userAppsCache[userId] = freshList
             }
         }
-        
-        attemptLoad()
     }
 
     fun install(source: String, userID: Int) {
         launchOnUI {
-            repo.installApk(source, userID, resultLiveData)
+            repo.installApk(source, userID, resultLiveData, installProgressLiveData)
         }
     }
 
@@ -61,9 +54,9 @@ class AppsViewModel(private val repo: AppsRepository) : BaseViewModel() {
         }
     }
 
-    fun clearApkData(packageName: String,userID: Int){
+    fun clearApkData(packageName: String, userID: Int) {
         launchOnUI {
-            repo.clearApkData(packageName,userID,resultLiveData)
+            repo.clearApkData(packageName, userID, resultLiveData)
         }
     }
 
@@ -73,9 +66,10 @@ class AppsViewModel(private val repo: AppsRepository) : BaseViewModel() {
         }
     }
 
-    fun updateApkOrder(userID: Int,dataList:List<AppInfo>){
+    fun updateApkOrder(userID: Int, dataList: List<AppInfo>) {
+        userAppsCache[userID] = dataList
         launchOnUI {
-            repo.updateApkOrder(userID,dataList)
+            repo.updateApkOrder(userID, dataList)
         }
     }
 }

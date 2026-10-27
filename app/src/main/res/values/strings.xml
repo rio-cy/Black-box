@@ -67,4 +67,20 @@
     <string name="disable_gms">Disable Service</string>
     <string name="disable_gms_hint">Clear the current Google service environment? Google service data will be cleared.</string>
     <string name="no_gms">Currently, there is no Google service environment on mobile phones.</string>
+    <string name="fake_location_empty_title">No Apps in this Profile</string>
+    <string name="fake_location_empty_desc">Fake location is configured per application. You haven\'t cloned or installed any apps into this profile yet. Clone an app from the home dashboard first.</string>
+    <string name="fake_location_empty_action">Clone an App</string>
+    <string name="permission_guide_title">Sandbox Setup &amp; Permissions</string>
+    <string name="permission_guide_desc">BlackBox requires specific device access to isolate, virtualize, and run Android applications safely.</string>
+    <string name="permission_storage_title">All Files Storage Access</string>
+    <string name="permission_storage_desc">Essential to load APK files from storage, persist sandbox app data, and avoid container file corruption.</string>
+    <string name="permission_notification_title">System Notifications</string>
+    <string name="permission_notification_desc">Required to display active sandboxed app notifications, push events, and daemon services.</string>
+    <string name="permission_battery_title">Battery Optimization</string>
+    <string name="permission_battery_desc">Prevents Android from killing virtual applications and services running in the background.</string>
+    <string name="permission_grant">Grant Access</string>
+    <string name="permission_granted">Granted</string>
+    <string name="permission_continue">Continue to Sandbox</string>
+    <string name="installing_app_title">Installing App</string>
+    <string name="installing_app_sub">Configuring isolated sandbox environment...</string>
 </resources>

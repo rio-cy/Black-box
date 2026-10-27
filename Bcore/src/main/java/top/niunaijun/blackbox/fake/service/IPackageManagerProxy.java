@@ -134,8 +134,15 @@ public class IPackageManagerProxy extends BinderInvocationStub {
             int flags = MethodParameterUtils.toInt(args[1]);
             
             
-            if ("com.android.vending".equals(packageName)) {
-                return createFakeGooglePlayServicesPackageInfo();
+            if ("com.android.vending".equals(packageName) || "com.google.android.gms".equals(packageName)) {
+                try {
+                    PackageInfo hostInfo = BlackBoxCore.getContext().getPackageManager().getPackageInfo(packageName, flags);
+                    if (hostInfo != null) {
+                        return hostInfo;
+                    }
+                } catch (Throwable ignored) {
+                }
+                return createFakeGooglePlayServicesPackageInfo(packageName);
             }
             
             PackageInfo packageInfo = BlackBoxCore.getBPackageManager().getPackageInfo(packageName, flags, BlackBoxCore.getUserId());
@@ -160,20 +167,32 @@ public class IPackageManagerProxy extends BinderInvocationStub {
             return null;
         }
         
-        private PackageInfo createFakeGooglePlayServicesPackageInfo() {
+        private PackageInfo createFakeGooglePlayServicesPackageInfo(String packageName) {
             PackageInfo packageInfo = new PackageInfo();
-            packageInfo.packageName = "com.android.vending";
-            packageInfo.versionName = "33.8.16-21";
-            packageInfo.versionCode = 83381621;
+            packageInfo.packageName = packageName;
+            if ("com.google.android.gms".equals(packageName)) {
+                packageInfo.versionName = "24.16.16";
+                packageInfo.versionCode = 241616000;
+                
+                ApplicationInfo appInfo = new ApplicationInfo();
+                appInfo.packageName = packageName;
+                appInfo.name = "Google Play Services";
+                appInfo.flags = ApplicationInfo.FLAG_SYSTEM;
+                appInfo.uid = 10001; 
+                packageInfo.applicationInfo = appInfo;
+            } else {
+                packageInfo.versionName = "33.8.16-21";
+                packageInfo.versionCode = 83381621;
+                
+                ApplicationInfo appInfo = new ApplicationInfo();
+                appInfo.packageName = packageName;
+                appInfo.name = "Google Play Store";
+                appInfo.flags = ApplicationInfo.FLAG_SYSTEM;
+                appInfo.uid = 10001; 
+                packageInfo.applicationInfo = appInfo;
+            }
             
-            ApplicationInfo appInfo = new ApplicationInfo();
-            appInfo.packageName = "com.android.vending";
-            appInfo.name = "Google Play Store";
-            appInfo.flags = ApplicationInfo.FLAG_SYSTEM;
-            appInfo.uid = 10001; 
-            packageInfo.applicationInfo = appInfo;
-            
-            Slog.d(TAG, "GetPackageInfo: Providing fake Google Play Services info");
+            Slog.d(TAG, "GetPackageInfo: Providing fake info for " + packageName);
             return packageInfo;
         }
     }
@@ -283,6 +302,22 @@ public class IPackageManagerProxy extends BinderInvocationStub {
             int flags = MethodParameterUtils.toInt(args[1]);
 
 
+
+            if ("com.android.vending".equals(packageName) || "com.google.android.gms".equals(packageName)) {
+                try {
+                    ApplicationInfo hostInfo = BlackBoxCore.getContext().getPackageManager().getApplicationInfo(packageName, flags);
+                    if (hostInfo != null) {
+                        return hostInfo;
+                    }
+                } catch (Throwable ignored) {
+                }
+                ApplicationInfo appInfo = new ApplicationInfo();
+                appInfo.packageName = packageName;
+                appInfo.name = "com.google.android.gms".equals(packageName) ? "Google Play Services" : "Google Play Store";
+                appInfo.flags = ApplicationInfo.FLAG_SYSTEM;
+                appInfo.uid = 10001;
+                return appInfo;
+            }
 
             ApplicationInfo applicationInfo = BlackBoxCore.getBPackageManager().getApplicationInfo(packageName, flags, BlackBoxCore.getUserId());
             if (applicationInfo != null) {

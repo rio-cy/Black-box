@@ -84,7 +84,9 @@ object DeviceSpoofManager {
         val prefs = getPrefs(context)
         val prefix = "user_${userId}_"
         if (!prefs.contains("${prefix}enabled")) {
-            return PRESET_PIXEL_8_PRO
+            val randomConfig = generateRandomConfig()
+            saveConfig(context, userId, randomConfig)
+            return randomConfig
         }
         return DeviceSpoofConfig(
             brand = prefs.getString("${prefix}brand", PRESET_PIXEL_8_PRO.brand) ?: PRESET_PIXEL_8_PRO.brand,

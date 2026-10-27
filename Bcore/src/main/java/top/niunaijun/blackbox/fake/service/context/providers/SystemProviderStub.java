@@ -51,19 +51,34 @@ public class SystemProviderStub extends ClassInvocationStub implements BContentP
         
         
         if ("call".equals(methodName)) {
-            
+            boolean isAndroidIdQuery = false;
             if (args != null) {
                 Class<?> attributionSourceClass = BRAttributionSource.getRealClass();
                 for (int i = 0; i < args.length; i++) {
                     Object arg = args[i];
-                    
+                    if (arg instanceof String && "android_id".equals(arg)) {
+                        isAndroidIdQuery = true;
+                    }
                     if (arg != null && attributionSourceClass != null && 
                             arg.getClass().getName().equals(attributionSourceClass.getName())) {
                         ContextCompat.fixAttributionSourceState(arg, BlackBoxCore.getHostUid());
                     }
                 }
             }
-            return method.invoke(mBase, args);
+            Object result = method.invoke(mBase, args);
+            if (isAndroidIdQuery && result instanceof android.os.Bundle) {
+                try {
+                    android.os.Bundle bundle = (android.os.Bundle) result;
+                    int userId = top.niunaijun.blackbox.app.BActivityThread.getUserId();
+                    if (top.niunaijun.blackbox.fake.service.DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                        String spoofedId = top.niunaijun.blackbox.fake.service.DeviceSpoofHelper.getSpoofedAndroidId(userId);
+                        bundle.putString("value", spoofedId);
+                    }
+                } catch (Throwable t) {
+                    // ignore
+                }
+            }
+            return result;
         }
         
         

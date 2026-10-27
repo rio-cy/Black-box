@@ -6,8 +6,10 @@ import android.app.Application;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -329,6 +331,51 @@ public class BlackBoxCore extends ClientConfiguration {
         return true;
     }
 
+    private ServiceConnection mDaemonConnection;
+
+    public void bindDaemonService() {
+        if (!isMainProcess() || getContext() == null) return;
+        try {
+            Intent intent = new Intent(getContext(), DaemonService.class);
+            mDaemonConnection = new ServiceConnection() {
+                @Override
+                public void onServiceConnected(ComponentName name, IBinder service) {
+                    Slog.d(TAG, "Connected to DaemonService in server process");
+                }
+
+                @Override
+                public void onServiceDisconnected(ComponentName name) {
+                    Slog.w(TAG, "Disconnected from DaemonService, rebinding...");
+                    clearAllServices();
+                    bindDaemonService();
+                }
+
+                @Override
+                public void onBindingDied(ComponentName name) {
+                    Slog.w(TAG, "DaemonService binding died, rebinding...");
+                    clearAllServices();
+                    bindDaemonService();
+                }
+            };
+            getContext().bindService(intent, mDaemonConnection, Context.BIND_AUTO_CREATE | Context.BIND_IMPORTANT);
+            Slog.d(TAG, "Bound to DaemonService with BIND_IMPORTANT to prevent server process freeze");
+        } catch (Exception e) {
+            Slog.w(TAG, "Failed to bind DaemonService: " + e.getMessage());
+        }
+    }
+
+    public void clearService(String name) {
+        if (name != null) {
+            mServices.remove(name);
+            Slog.d(TAG, "Cleared service from cache: " + name);
+        }
+    }
+
+    public void clearAllServices() {
+        mServices.clear();
+        Slog.d(TAG, "Cleared all services from cache");
+    }
+
     public IBinder getService(String name) {
         if (!areServicesAvailable()) {
             Slog.w(TAG, "Services not available, skipping service request: " + name);
@@ -340,23 +387,24 @@ public class BlackBoxCore extends ClientConfiguration {
     
     private IBinder getServiceInternal(String name) {
         IBinder binder = mServices.get(name);
-        if (binder != null && binder.isBinderAlive()) {
-            return binder;
+        if (binder != null) {
+            if (binder.isBinderAlive()) {
+                return binder;
+            } else {
+                mServices.remove(name);
+            }
         }
-        
-        
         
         if (isMainProcess() && !isBlackProcessRunning()) {
             Slog.w(TAG, "Main process trying to access service " + name + " but black process not running, starting it...");
             startBlackProcess();
             
             try {
-                Thread.sleep(1000);
+                Thread.sleep(800);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
         }
-        
         
         long startTime = System.currentTimeMillis();
         long timeout = 3000; 
@@ -365,12 +413,10 @@ public class BlackBoxCore extends ClientConfiguration {
             Bundle bundle = new Bundle();
             bundle.putString("_B_|_server_name_", name);
             
-            
             Bundle vm = null;
             try {
                 vm = ProviderCall.callSafely(ProxyManifest.getBindProvider(), "VM", null, bundle);
             } catch (Exception e) {
-                
                 if (System.currentTimeMillis() - startTime > timeout) {
                     Slog.w(TAG, "Provider call timeout for service: " + name + ", using fallback");
                     return createFallbackService(name);
@@ -380,17 +426,32 @@ public class BlackBoxCore extends ClientConfiguration {
             
             if (vm == null) {
                 Slog.w(TAG, "Provider call returned null for service: " + name);
-                
                 return createFallbackService(name);
             }
             
             binder = BundleCompat.getBinder(vm, "_B_|_server_");
             Slog.d(TAG, "getService: " + name + ", " + binder);
             if (binder != null) {
+                final String serviceName = name;
+                final IBinder b = binder;
+                try {
+                    b.linkToDeath(new IBinder.DeathRecipient() {
+                        @Override
+                        public void binderDied() {
+                            Slog.w(TAG, "Binder died in BlackBoxCore cache: " + serviceName);
+                            mServices.remove(serviceName);
+                            try {
+                                b.unlinkToDeath(this, 0);
+                            } catch (Exception ignored) {
+                            }
+                        }
+                    }, 0);
+                } catch (Exception e) {
+                    Slog.w(TAG, "Failed to link death recipient for " + name + ": " + e.getMessage());
+                }
                 mServices.put(name, binder);
             } else {
                 Slog.w(TAG, "Failed to get binder for service: " + name);
-                
                 return createFallbackService(name);
             }
             return binder;
@@ -561,6 +622,7 @@ public class BlackBoxCore extends ClientConfiguration {
             
             
             scheduleProviderCheck();
+            bindDaemonService();
             
             Slog.d(TAG, "Started DaemonService to initialize black process");
         } catch (Exception e) {
@@ -979,6 +1041,7 @@ public class BlackBoxCore extends ClientConfiguration {
         try {
             
             ensureBlackProcessInitialized();
+            bindDaemonService();
             
             
             if (System.currentTimeMillis() - startTime > maxInitTime) {

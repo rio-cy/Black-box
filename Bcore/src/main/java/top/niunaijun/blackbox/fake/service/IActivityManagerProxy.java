@@ -662,11 +662,12 @@ public class IActivityManagerProxy extends ClassInvocationStub {
             int receiverIndex = getReceiverIndex();
             if (args[receiverIndex] != null) {
                 IIntentReceiver intentReceiver = (IIntentReceiver) args[receiverIndex];
-                IIntentReceiver proxy = InnerReceiverDelegate.createProxy(intentReceiver);
-
                 WeakReference<?> weakReference = BRLoadedApkReceiverDispatcherInnerReceiver.get(intentReceiver).mDispatcher();
-                if (weakReference != null) {
-                    BRLoadedApkReceiverDispatcher.get(weakReference.get())._set_mIIntentReceiver(proxy);
+                Object dispatcher = weakReference != null ? weakReference.get() : null;
+                IIntentReceiver proxy = InnerReceiverDelegate.createProxy(intentReceiver, dispatcher);
+
+                if (dispatcher != null) {
+                    BRLoadedApkReceiverDispatcher.get(dispatcher)._set_mIIntentReceiver(proxy);
                 }
 
                 args[receiverIndex] = proxy;
@@ -713,11 +714,12 @@ public class IActivityManagerProxy extends ClassInvocationStub {
             int receiverIndex = 2;
             if (args[receiverIndex] != null) {
                 IIntentReceiver intentReceiver = (IIntentReceiver) args[receiverIndex];
-                IIntentReceiver proxy = InnerReceiverDelegate.createProxy(intentReceiver);
-
                 WeakReference<?> weakReference = BRLoadedApkReceiverDispatcherInnerReceiver.get(intentReceiver).mDispatcher();
-                if (weakReference != null) {
-                    BRLoadedApkReceiverDispatcher.get(weakReference.get())._set_mIIntentReceiver(proxy);
+                Object dispatcher = weakReference != null ? weakReference.get() : null;
+                IIntentReceiver proxy = InnerReceiverDelegate.createProxy(intentReceiver, dispatcher);
+
+                if (dispatcher != null) {
+                    BRLoadedApkReceiverDispatcher.get(dispatcher)._set_mIIntentReceiver(proxy);
                 }
 
                 args[receiverIndex] = proxy;

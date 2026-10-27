@@ -54,16 +54,23 @@ public class BActivityManager extends BlackManager<IBActivityManagerService> {
                 Slog.w(TAG, "ActivityManager service died during initProcess, clearing cache and retrying " + (retryCount + 1) + "/" + maxRetries, e);
                 clearServiceCache();
                 try {
-                    Thread.sleep(100);
+                    Thread.sleep(150);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     break;
                 }
             } catch (RemoteException e) {
-                Slog.e(TAG, "RemoteException in initProcess", e);
-                break;
+                Slog.w(TAG, "RemoteException in initProcess, clearing cache and retrying " + (retryCount + 1) + "/" + maxRetries, e);
+                clearServiceCache();
+                try {
+                    Thread.sleep(150);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
             } catch (Exception e) {
                 Slog.e(TAG, "Unexpected error in initProcess", e);
+                clearServiceCache();
                 break;
             }
             retryCount++;

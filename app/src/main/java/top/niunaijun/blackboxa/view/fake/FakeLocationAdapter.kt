@@ -25,14 +25,15 @@ class FakeLocationAdapter : RVHolderFactory() {
         override fun setContent(item: FakeLocationBean, isSelected: Boolean, payload: Any?) {
             binding.icon.setImageDrawable(item.icon)
             binding.name.text = item.name
-            if (item.fakeLocation == null || item.fakeLocationPattern == BLocationManager.CLOSE_MODE) {
+            val isFake = item.fakeLocation != null && item.fakeLocationPattern != BLocationManager.CLOSE_MODE
+            if (!isFake) {
                 binding.fakeLocation.text = getString(R.string.real_location)
+                binding.cornerLabel.visibility = View.GONE
             } else {
                 binding.fakeLocation.text =
-                    String.format("%f, %f", item.fakeLocation!!.latitude, item.fakeLocation!!.longitude)
+                    String.format("%.5f, %.5f", item.fakeLocation!!.latitude, item.fakeLocation!!.longitude)
+                binding.cornerLabel.visibility = View.VISIBLE
             }
-            binding.cornerLabel.visibility = View.VISIBLE
-
         }
     }
 }

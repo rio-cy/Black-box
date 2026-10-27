@@ -10,20 +10,23 @@ import java.lang.ref.WeakReference;
 import java.util.HashMap;
 import java.util.Map;
 
+import black.android.app.BRLoadedApkReceiverDispatcherInnerReceiver;
 import black.android.content.BRIIntentReceiver;
 import top.niunaijun.blackbox.BlackBoxCore;
-import top.niunaijun.blackbox.app.BActivityThread;
 import top.niunaijun.blackbox.proxy.record.ProxyBroadcastRecord;
+import top.niunaijun.blackbox.utils.Reflector;
 
 
 public class InnerReceiverDelegate extends IIntentReceiver.Stub {
     public static final String TAG = "InnerReceiverDelegate";
 
     private static final Map<IBinder, InnerReceiverDelegate> sInnerReceiverDelegate = new HashMap<>();
-    private final WeakReference<IIntentReceiver> mIntentReceiver;
+    private final IIntentReceiver mIntentReceiver;
+    private final Object mDispatcher;
 
-    private InnerReceiverDelegate(IIntentReceiver iIntentReceiver) {
-        this.mIntentReceiver = new WeakReference<>(iIntentReceiver);
+    private InnerReceiverDelegate(IIntentReceiver iIntentReceiver, Object dispatcher) {
+        this.mIntentReceiver = iIntentReceiver;
+        this.mDispatcher = dispatcher;
     }
 
     public static InnerReceiverDelegate getDelegate(IBinder iBinder) {
@@ -31,8 +34,15 @@ public class InnerReceiverDelegate extends IIntentReceiver.Stub {
     }
 
     public static IIntentReceiver createProxy(IIntentReceiver base) {
+        return createProxy(base, null);
+    }
+
+    public static IIntentReceiver createProxy(IIntentReceiver base, Object dispatcher) {
         if (base instanceof InnerReceiverDelegate) {
             return base;
+        }
+        if (base == null) {
+            return null;
         }
         final IBinder iBinder = base.asBinder();
         InnerReceiverDelegate delegate = sInnerReceiverDelegate.get(iBinder);
@@ -42,13 +52,16 @@ public class InnerReceiverDelegate extends IIntentReceiver.Stub {
                     @Override
                     public void binderDied() {
                         sInnerReceiverDelegate.remove(iBinder);
-                        iBinder.unlinkToDeath(this, 0);
+                        try {
+                            iBinder.unlinkToDeath(this, 0);
+                        } catch (Exception ignored) {
+                        }
                     }
                 }, 0);
             } catch (RemoteException e) {
                 e.printStackTrace();
             }
-            delegate = new InnerReceiverDelegate(base);
+            delegate = new InnerReceiverDelegate(base, dispatcher);
             sInnerReceiverDelegate.put(iBinder, delegate);
         }
         return delegate;
@@ -56,18 +69,49 @@ public class InnerReceiverDelegate extends IIntentReceiver.Stub {
 
     @Override
     public void performReceive(Intent intent, int resultCode, String data, Bundle extras, boolean ordered, boolean sticky, int sendingUser) throws RemoteException {
-        intent.setExtrasClassLoader(BlackBoxCore.getApplication().getClassLoader());
+        if (intent == null) return;
+        try {
+            if (BlackBoxCore.getApplication() != null) {
+                intent.setExtrasClassLoader(BlackBoxCore.getApplication().getClassLoader());
+            }
+        } catch (Throwable ignored) {
+        }
+
         ProxyBroadcastRecord proxyBroadcastRecord = ProxyBroadcastRecord.create(intent);
         Intent perIntent;
-        if (proxyBroadcastRecord.mIntent != null) {
-            proxyBroadcastRecord.mIntent.setExtrasClassLoader(BlackBoxCore.getApplication().getClassLoader());
+        if (proxyBroadcastRecord != null && proxyBroadcastRecord.mIntent != null) {
+            try {
+                if (BlackBoxCore.getApplication() != null) {
+                    proxyBroadcastRecord.mIntent.setExtrasClassLoader(BlackBoxCore.getApplication().getClassLoader());
+                }
+            } catch (Throwable ignored) {
+            }
             perIntent = proxyBroadcastRecord.mIntent;
         } else {
             perIntent = intent;
         }
-        IIntentReceiver iIntentReceiver = mIntentReceiver.get();
-        if (iIntentReceiver != null) {
-            BRIIntentReceiver.get(iIntentReceiver).performReceive(perIntent, resultCode, data, extras, ordered, sticky, sendingUser);
+
+        if (mDispatcher != null && mIntentReceiver != null) {
+            try {
+                BRLoadedApkReceiverDispatcherInnerReceiver.get(mIntentReceiver)._set_mDispatcher(new WeakReference<>(mDispatcher));
+            } catch (Throwable ignored) {
+            }
+        }
+
+        if (mIntentReceiver != null) {
+            try {
+                BRIIntentReceiver.get(mIntentReceiver).performReceive(perIntent, resultCode, data, extras, ordered, sticky, sendingUser);
+                return;
+            } catch (Throwable e) {
+                if (mDispatcher != null) {
+                    try {
+                        Reflector.QuietReflector.with(mDispatcher)
+                                .method("performReceive", Intent.class, int.class, String.class, Bundle.class, boolean.class, boolean.class, int.class)
+                                .call(perIntent, resultCode, data, extras, ordered, sticky, sendingUser);
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
         }
     }
 }

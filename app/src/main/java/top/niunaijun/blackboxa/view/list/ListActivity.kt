@@ -87,8 +87,16 @@ class ListActivity : ComponentActivity() {
     private var userID: Int = 0
 
     private val openDocumentedResult =
-        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-            uri?.let { finishWithResult(it.toString()) }
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let {
+                try {
+                    contentResolver.takePersistableUriPermission(
+                        it,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (_: Exception) {}
+                finishWithResult(it.toString())
+            }
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -107,7 +115,13 @@ class ListActivity : ComponentActivity() {
                     onBack = { finish() },
                     onSelectApp = { app -> finishWithResult(app.packageName) },
                     onPickApkFile = {
-                        openDocumentedResult.launch("application/vnd.android.package-archive")
+                        openDocumentedResult.launch(
+                            arrayOf(
+                                "application/vnd.android.package-archive",
+                                "application/octet-stream",
+                                "*/*"
+                            )
+                        )
                     }
                 )
             }
@@ -147,12 +161,14 @@ fun ListAppScreen(
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf(AppFilter.ALL) }
+    var includeSystemApps by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
 
-    val filteredApps by remember(rawApps, searchQuery, selectedFilter) {
+    val filteredApps by remember(rawApps, searchQuery, selectedFilter, includeSystemApps) {
         derivedStateOf {
             val list = rawApps ?: emptyList()
             list.filter { app ->
+                val matchesSystem = includeSystemApps || !app.isSystemApp
                 val matchesQuery = searchQuery.isBlank() ||
                         app.name.contains(searchQuery, ignoreCase = true) ||
                         app.packageName.contains(searchQuery, ignoreCase = true)
@@ -161,7 +177,7 @@ fun ListAppScreen(
                     AppFilter.NOT_CLONED -> !app.isInstall
                     AppFilter.CLONED -> app.isInstall
                 }
-                matchesQuery && matchesFilter
+                matchesSystem && matchesQuery && matchesFilter
             }
         }
     }
@@ -256,18 +272,23 @@ fun ListAppScreen(
                 FilterChip(
                     selected = selectedFilter == AppFilter.ALL,
                     onClick = { selectedFilter = AppFilter.ALL },
-                    label = { Text("All (${rawApps?.size ?: 0})") },
+                    label = { Text("All (${rawApps?.count { includeSystemApps || !it.isSystemApp } ?: 0})") },
                     colors = FilterChipDefaults.filterChipColors()
                 )
                 FilterChip(
                     selected = selectedFilter == AppFilter.NOT_CLONED,
                     onClick = { selectedFilter = AppFilter.NOT_CLONED },
-                    label = { Text("Available (${rawApps?.count { !it.isInstall } ?: 0})") }
+                    label = { Text("Available (${rawApps?.count { (!it.isInstall) && (includeSystemApps || !it.isSystemApp) } ?: 0})") }
                 )
                 FilterChip(
                     selected = selectedFilter == AppFilter.CLONED,
                     onClick = { selectedFilter = AppFilter.CLONED },
-                    label = { Text("Cloned (${rawApps?.count { it.isInstall } ?: 0})") }
+                    label = { Text("Cloned (${rawApps?.count { it.isInstall && (includeSystemApps || !it.isSystemApp) } ?: 0})") }
+                )
+                FilterChip(
+                    selected = includeSystemApps,
+                    onClick = { includeSystemApps = !includeSystemApps },
+                    label = { Text("System Apps") }
                 )
             }
 

@@ -14,7 +14,7 @@ import top.niunaijun.blackboxa.bean.AppInfo
 import top.niunaijun.blackboxa.bean.InstalledAppBean
 import top.niunaijun.blackboxa.util.MemoryManager
 import top.niunaijun.blackboxa.util.getString
-
+import top.niunaijun.blackboxa.view.apps.InstallProgress
 
 class AppsRepository {
     val TAG: String = "AppsRepository"
@@ -87,23 +87,17 @@ class AppsRepository {
 
                 for (installedApplication in installedApplications) {
                     try {
-                        val file = File(installedApplication.sourceDir)
-
-                        if ((installedApplication.flags and ApplicationInfo.FLAG_SYSTEM) != 0)
-                                continue
+                        val sourceDir = installedApplication.sourceDir ?: continue
+                        val file = File(sourceDir)
+                        if (!file.exists()) continue
 
                         if (!AbiUtils.isSupport(file)) continue
 
-                        
                         if (BlackBoxCore.get().isBlackBoxApp(installedApplication.packageName)) {
-                            Log.d(
-                                    TAG,
-                                    "Filtering out BlackBox app: ${installedApplication.packageName}"
-                            )
                             continue
                         }
 
-                        val isXpModule = false
+                        val isSystem = (installedApplication.flags and ApplicationInfo.FLAG_SYSTEM) != 0
 
                         val info =
                                 AppInfo(
@@ -112,8 +106,8 @@ class AppsRepository {
                                                 installedApplication
                                         ), 
                                         installedApplication.packageName,
-                                        installedApplication.sourceDir,
-                                        isXpModule
+                                        sourceDir,
+                                        isSystem
                                 )
                         installedList.add(info)
                     } catch (e: Exception) {
@@ -139,8 +133,10 @@ class AppsRepository {
         try {
             loadingLiveData.postValue(true)
             synchronized(mInstalledList) {
+                if (mInstalledList.isEmpty()) {
+                    previewInstallList()
+                }
                 val blackBoxCore = BlackBoxCore.get()
-                Log.d(TAG, mInstalledList.joinToString(","))
                 val newInstalledList =
                         mInstalledList.map {
                             InstalledAppBean(
@@ -148,7 +144,8 @@ class AppsRepository {
                                     it.icon, 
                                     it.packageName,
                                     it.sourceDir,
-                                    blackBoxCore.isInstalled(it.packageName, userID)
+                                    blackBoxCore.isInstalled(it.packageName, userID),
+                                    it.isXpModule // Used to flag isSystemApp
                             )
                         }
                 appsLiveData.postValue(newInstalledList)
@@ -161,7 +158,7 @@ class AppsRepository {
         }
     }
 
-    fun getVmInstallList(userId: Int, appsLiveData: MutableLiveData<List<AppInfo>>) {
+    fun getVmInstallList(userId: Int, appsLiveData: MutableLiveData<List<AppInfo>>, onLoaded: ((List<AppInfo>) -> Unit)? = null) {
         try {
             
             if (MemoryManager.isMemoryCritical()) {
@@ -177,197 +174,142 @@ class AppsRepository {
             
             val users = blackBoxCore.users
             Log.d(TAG, "getVmInstallList: userId=$userId, total users=${users.size}")
-            users.forEach { user -> Log.d(TAG, "User: id=${user.id}, name=${user.name}") }
 
             val sortListData = AppManager.mRemarkSharedPreferences.getString("AppList$userId", "")
             val sortList = sortListData?.split(",")
 
-            
             var applicationList: List<ApplicationInfo>? = null
             var retryCount = 0
-            val maxRetries = 3
+            val maxRetries = 2
 
             while (applicationList == null && retryCount < maxRetries) {
                 try {
                     applicationList = blackBoxCore.getInstalledApplications(0, userId)
                     if (applicationList == null) {
-                        Log.w(
-                                TAG,
-                                "getVmInstallList: Attempt ${retryCount + 1} returned null, retrying..."
-                        )
                         retryCount++
-                        Thread.sleep(100) 
+                        Thread.sleep(50)
                     }
                 } catch (e: Exception) {
-                    Log.e(
-                            TAG,
-                            "getVmInstallList: Error getting applications on attempt ${retryCount + 1}: ${e.message}"
-                    )
                     retryCount++
                     if (retryCount < maxRetries) {
-                        Thread.sleep(200) 
+                        Thread.sleep(50)
                     }
                 }
             }
 
-            
             if (applicationList == null) {
-                Log.e(
-                        TAG,
-                        "getVmInstallList: applicationList is null for userId=$userId after $maxRetries attempts"
-                )
                 appsLiveData.postValue(emptyList())
+                onLoaded?.invoke(emptyList())
                 return
-            }
-
-            
-            Log.d(
-                    TAG,
-                    "getVmInstallList: userId=$userId, applicationList.size=${applicationList.size}"
-            )
-            if (applicationList.isNotEmpty()) {
-                Log.d(TAG, "First app: ${applicationList.first().packageName}")
-            } else {
-                Log.w(TAG, "getVmInstallList: No applications found for userId=$userId")
             }
 
             val appInfoList = mutableListOf<AppInfo>()
 
-            
             val sortedApplicationList =
                     if (!sortList.isNullOrEmpty()) {
                         try {
                             applicationList.sortedWith(AppsSortComparator(sortList))
                         } catch (e: Exception) {
-                            Log.e(TAG, "getVmInstallList: Error sorting applications: ${e.message}")
-                            applicationList 
+                            applicationList
                         }
                     } else {
                         applicationList
                     }
 
-            
             sortedApplicationList.forEachIndexed { index, applicationInfo ->
                 try {
-                    
-                    if (index > 0 && index % 25 == 0) {
-                        if (MemoryManager.isMemoryCritical()) {
-                            Log.w(TAG, "Memory critical during processing, forcing GC")
-                            MemoryManager.forceGarbageCollectionIfNeeded()
-                        }
-                    }
-
-                    
                     if (applicationInfo.packageName.isNullOrBlank()) {
-                        Log.w(
-                                TAG,
-                                "getVmInstallList: Skipping app with null/blank package name at index $index"
-                        )
                         return@forEachIndexed
                     }
 
                     val info =
                             AppInfo(
                                     safeLoadAppLabel(applicationInfo),
-                                    safeLoadAppIcon(
-                                            applicationInfo
-                                    ), 
+                                    safeLoadAppIcon(applicationInfo),
                                     applicationInfo.packageName,
                                     applicationInfo.sourceDir ?: "",
                                     false
                             )
 
                     appInfoList.add(info)
-
-                    
-                    if (index > 0 && index % 50 == 0) {
-                        Log.d(
-                                TAG,
-                                "getVmInstallList: Processed $index/${sortedApplicationList.size} apps - ${MemoryManager.getMemoryInfo()}"
-                        )
-                    }
                 } catch (e: Exception) {
-                    Log.e(
-                            TAG,
-                            "getVmInstallList: Error processing app at index $index (${applicationInfo.packageName}): ${e.message}"
-                    )
-                    
+                    Log.e(TAG, "getVmInstallList: Error processing app: ${e.message}")
                 }
             }
 
-            Log.d(
-                    TAG,
-                    "getVmInstallList: processed ${appInfoList.size} apps - ${MemoryManager.getMemoryInfo()}"
-            )
-
-            
-            
-            if (appInfoList.isEmpty()) {
-                Log.d(
-                        TAG,
-                        "getVmInstallList: No virtual apps found for userId=$userId, showing empty list (correct for new users)"
-                )
-            } else {
-                Log.d(
-                        TAG,
-                        "getVmInstallList: Showing ${appInfoList.size} virtual apps for userId=$userId"
-                )
-            }
-
-            
-            try {
-                appsLiveData.postValue(appInfoList)
-            } catch (e: Exception) {
-                Log.e(TAG, "getVmInstallList: Error posting to LiveData: ${e.message}")
-                
-                try {
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        try {
-                            appsLiveData.postValue(appInfoList)
-                        } catch (e2: Exception) {
-                            Log.e(
-                                    TAG,
-                                    "getVmInstallList: Fallback posting also failed: ${e2.message}"
-                            )
-                        }
-                    }
-                } catch (e3: Exception) {
-                    Log.e(
-                            TAG,
-                            "getVmInstallList: Could not schedule fallback posting: ${e3.message}"
-                    )
-                }
-            }
+            onLoaded?.invoke(appInfoList)
+            appsLiveData.postValue(appInfoList)
         } catch (e: Exception) {
             Log.e(TAG, "Error in getVmInstallList: ${e.message}")
-            try {
-                appsLiveData.postValue(emptyList())
-            } catch (e2: Exception) {
-                Log.e(TAG, "getVmInstallList: Error posting empty list: ${e2.message}")
-            }
+            appsLiveData.postValue(emptyList())
+            onLoaded?.invoke(emptyList())
         }
     }
 
-    fun installApk(source: String, userId: Int, resultLiveData: MutableLiveData<String>) {
+    fun installApk(
+            source: String,
+            userId: Int,
+            resultLiveData: MutableLiveData<String>,
+            progressLiveData: MutableLiveData<InstallProgress>? = null
+    ) {
         try {
-            
+            val uri = try { Uri.parse(source) } catch (_: Exception) { null }
+            val isUri = uri != null && (uri.scheme == "content" || uri.scheme == "file")
+            val isApkFile = !isUri && (source.endsWith(".apk", ignoreCase = true) || File(source).exists())
+
+            var previewName = "Application"
+            var previewIcon: android.graphics.drawable.Drawable? = null
+            try {
+                if (isUri) {
+                    previewName = uri?.lastPathSegment ?: "APK File"
+                } else if (isApkFile) {
+                    val archive = BlackBoxCore.getPackageManager().getPackageArchiveInfo(source, 0)
+                    val appInfo = archive?.applicationInfo
+                    if (appInfo != null) {
+                        previewName = safeLoadAppLabel(appInfo)
+                        previewIcon = safeLoadAppIcon(appInfo)
+                    }
+                } else {
+                    val app = BlackBoxCore.getPackageManager().getApplicationInfo(source, 0)
+                    if (app != null) {
+                        previewName = safeLoadAppLabel(app)
+                        previewIcon = safeLoadAppIcon(app)
+                    }
+                }
+            } catch (_: Exception) {}
+
+            progressLiveData?.postValue(
+                    InstallProgress(
+                            isInstalling = true,
+                            appName = previewName,
+                            packageName = source,
+                            icon = previewIcon
+                    )
+            )
+
             if (source.contains("blackbox") ||
                             source.contains("niunaijun") ||
                             source.contains("vspace") ||
                             source.contains("virtual")
             ) {
-                
                 try {
                     val hostPackageName = BlackBoxCore.getHostPkg()
-
-                    
-                    if (!URLUtil.isValidUrl(source)) {
+                    if (!isUri && !isApkFile) {
+                        if (source == hostPackageName) {
+                            progressLiveData?.postValue(InstallProgress(isInstalling = false))
+                            resultLiveData.postValue(
+                                    "Cannot install BlackBox app from within BlackBox. This would create infinite recursion and is not allowed for security reasons."
+                            )
+                            return
+                        }
+                    } else if (isApkFile) {
                         val file = File(source)
                         if (file.exists()) {
                             val packageInfo =
                                     BlackBoxCore.getPackageManager()
                                             .getPackageArchiveInfo(source, 0)
                             if (packageInfo != null && packageInfo.packageName == hostPackageName) {
+                                progressLiveData?.postValue(InstallProgress(isInstalling = false))
                                 resultLiveData.postValue(
                                         "Cannot install BlackBox app from within BlackBox. This would create infinite recursion and is not allowed for security reasons."
                                 )
@@ -381,13 +323,13 @@ class AppsRepository {
             }
 
             val blackBoxCore = BlackBoxCore.get()
-            val installResult =
-                    if (URLUtil.isValidUrl(source)) {
-                        val uri = Uri.parse(source)
-                        blackBoxCore.installPackageAsUser(uri, userId)
-                    } else {
-                        blackBoxCore.installPackageAsUser(source, userId)
-                    }
+            val installResult = when {
+                isUri -> blackBoxCore.installPackageAsUser(uri!!, userId)
+                isApkFile -> blackBoxCore.installPackageAsUser(File(source), userId)
+                else -> blackBoxCore.installPackageAsUser(source, userId)
+            }
+
+            progressLiveData?.postValue(InstallProgress(isInstalling = false))
 
             if (installResult.success) {
                 updateAppSortList(userId, installResult.packageName, true)
@@ -398,12 +340,20 @@ class AppsRepository {
             scanUser()
         } catch (e: Exception) {
             Log.e(TAG, "Error installing APK: ${e.message}")
+            progressLiveData?.postValue(InstallProgress(isInstalling = false))
             resultLiveData.postValue("Installation failed: ${e.message}")
         }
     }
 
     fun unInstall(packageName: String, userID: Int, resultLiveData: MutableLiveData<String>) {
         try {
+            // First stop virtual app processes to release open SQLite / APK file locks
+            try {
+                BlackBoxCore.get().stopPackage(packageName, userID)
+                Thread.sleep(150)
+            } catch (e: Exception) {
+                Log.w(TAG, "Error stopping package before uninstall: ${e.message}")
+            }
             BlackBoxCore.get().uninstallPackageAsUser(packageName, userID)
             updateAppSortList(userID, packageName, false)
             scanUser()

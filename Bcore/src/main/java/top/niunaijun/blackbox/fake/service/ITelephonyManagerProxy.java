@@ -48,8 +48,10 @@ public class ITelephonyManagerProxy extends BinderInvocationStub {
     public static class GetDeviceId extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-
-
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getSpoofedImei(userId);
+            }
             return Md5Utils.md5(BlackBoxCore.getHostPkg());
         }
     }
@@ -58,8 +60,10 @@ public class ITelephonyManagerProxy extends BinderInvocationStub {
     public static class getImeiForSlot extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-
-
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getSpoofedImei(userId);
+            }
             return Md5Utils.md5(BlackBoxCore.getHostPkg());
         }
     }
@@ -68,8 +72,11 @@ public class ITelephonyManagerProxy extends BinderInvocationStub {
     public static class GetMeidForSlot extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-
-
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                String imei = DeviceSpoofHelper.getSpoofedImei(userId);
+                return imei.length() >= 14 ? imei.substring(0, 14) : imei;
+            }
             return Md5Utils.md5(BlackBoxCore.getHostPkg());
         }
     }
@@ -95,6 +102,10 @@ public class ITelephonyManagerProxy extends BinderInvocationStub {
     public static class GetSubscriberId extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getSpoofedImei(userId);
+            }
             return Md5Utils.md5(BlackBoxCore.getHostPkg());
         }
     }
@@ -103,6 +114,10 @@ public class ITelephonyManagerProxy extends BinderInvocationStub {
     public static class GetDeviceIdWithFeature extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            int userId = BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getSpoofedImei(userId);
+            }
             return Md5Utils.md5(BlackBoxCore.getHostPkg());
         }
     }

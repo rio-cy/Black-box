@@ -40,15 +40,19 @@ public class ISettingsProviderProxy extends ClassInvocationStub {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
             try {
-                
                 if (args != null && args.length > 0) {
                     String key = (String) args[0];
+                    if ("android_id".equals(key)) {
+                        int userId = BActivityThread.getUserId();
+                        if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                            return DeviceSpoofHelper.getSpoofedAndroidId(userId);
+                        }
+                    }
                     if (key != null && key.contains("feature_flag")) {
                         Slog.d(TAG, "Intercepting feature flag query: " + key + ", returning safe default");
                         return "true"; 
                     }
                 }
-                
                 
                 return method.invoke(who, args);
             } catch (Exception e) {
@@ -67,15 +71,19 @@ public class ISettingsProviderProxy extends ClassInvocationStub {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
             try {
-                
                 if (args != null && args.length > 0) {
                     String key = (String) args[0];
+                    if ("android_id".equals(key)) {
+                        int userId = BActivityThread.getUserId();
+                        if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                            return DeviceSpoofHelper.getSpoofedAndroidId(userId);
+                        }
+                    }
                     if (key != null && key.contains("feature_flag")) {
                         Slog.d(TAG, "Intercepting feature flag query: " + key + ", returning safe default");
                         return "true"; 
                     }
                 }
-                
                 
                 return method.invoke(who, args);
             } catch (Exception e) {

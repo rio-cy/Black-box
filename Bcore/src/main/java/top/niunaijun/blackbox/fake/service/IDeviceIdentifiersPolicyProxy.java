@@ -37,8 +37,10 @@ public class IDeviceIdentifiersPolicyProxy extends BinderInvocationStub {
     public static class x extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-
-
+            int userId = top.niunaijun.blackbox.app.BActivityThread.getUserId();
+            if (DeviceSpoofHelper.isSpoofingEnabled(userId)) {
+                return DeviceSpoofHelper.getSpoofedSerial(userId);
+            }
             return Md5Utils.md5(BlackBoxCore.getHostPkg());
         }
     }

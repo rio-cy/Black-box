@@ -23,9 +23,11 @@ public class DaemonService extends Service {
     private static final String CHANNEL_NAME = "BlackBox Daemon Service";
     private static final String CHANNEL_DESCRIPTION = "Keeps BlackBox core services running";
 
+    private final IBinder mBinder = new android.os.Binder();
+
     @Override
     public IBinder onBind(Intent intent) {
-        return null;
+        return mBinder;
     }
 
     @Override

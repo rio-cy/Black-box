@@ -48,17 +48,29 @@ import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Power
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shortcut
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.input.pointer.pointerInput
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.PowerManager
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
 import top.niunaijun.blackboxa.util.DeviceSpoofManager
 import top.niunaijun.blackboxa.view.devicespoof.DeviceSpoofActivity
@@ -133,6 +145,9 @@ class MainActivity : AppCompatActivity() {
     private var currentUser by mutableIntStateOf(0)
     private var availableUsers by mutableStateOf<List<Int>>(listOf(0))
     private var hasStoragePermission by mutableStateOf(true)
+    private var hasNotificationPermission by mutableStateOf(true)
+    private var hasBatteryOptimizationExempt by mutableStateOf(true)
+    private var showPermissionOnboarding by mutableStateOf(false)
 
     private val apkPathResult =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -150,12 +165,17 @@ class MainActivity : AppCompatActivity() {
 
     private val storagePermissionResult =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-            refreshStoragePermission()
+            refreshPermissions()
         }
 
     private val requestMultiplePermissionsLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-            refreshStoragePermission()
+            refreshPermissions()
+        }
+
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            refreshPermissions()
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -172,64 +192,77 @@ class MainActivity : AppCompatActivity() {
             .get(AppsViewModel::class.java)
 
         refreshUsers()
-        refreshStoragePermission()
+        refreshPermissions()
         checkVpnPermission()
 
         setContent {
             BlackBoxTheme {
-                MainDashboardScreen(
-                    viewModel = viewModel,
-                    currentUser = currentUser,
-                    availableUsers = availableUsers,
-                    hasStoragePermission = hasStoragePermission,
-                    onUserChanged = { userId ->
-                        currentUser = userId
-                        viewModel.getInstalledAppsWithRetry(userId)
-                    },
-                    onAddUser = {
-                        val nextId = (availableUsers.maxOrNull() ?: 0) + 1
-                        try {
-                            BlackBoxCore.get().createUser(nextId)
-                            refreshUsers()
-                            currentUser = nextId
-                            viewModel.getInstalledAppsWithRetry(nextId)
-                            Toast.makeText(this, "Created User Profile $nextId", Toast.LENGTH_SHORT).show()
-                        } catch (e: Exception) {
-                            Toast.makeText(this, "Failed to create user: ${e.message}", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    onRequestStoragePermission = { requestStorageAccess() },
-                    onOpenAppList = {
-                        val intent = Intent(this, ListActivity::class.java)
-                        intent.putExtra("userID", currentUser)
-                        apkPathResult.launch(intent)
-                    },
-                    onOpenSettings = { SettingActivity.start(this) },
-                    onOpenFakeLocation = {
-                        val intent = Intent(this, FakeManagerActivity::class.java)
-                        intent.putExtra("userID", currentUser)
-                        startActivity(intent)
-                    },
-                    onOpenDeviceSpoof = { targetUser ->
-                        DeviceSpoofActivity.start(this, targetUser)
-                    },
-                    onDeleteProfile = { targetUser ->
-                        try {
-                            BlackBoxCore.get().deleteUser(targetUser)
-                            AppManager.mRemarkSharedPreferences.edit {
-                                remove("Remark$targetUser")
-                                remove("AppList$targetUser")
+                if (showPermissionOnboarding) {
+                    PermissionOnboardingScreen(
+                        hasStorage = hasStoragePermission,
+                        hasNotification = hasNotificationPermission,
+                        hasBatteryOpt = hasBatteryOptimizationExempt,
+                        onRequestStorage = { requestStorageAccess() },
+                        onRequestNotification = { requestNotificationPermission() },
+                        onRequestBatteryOpt = { requestBatteryOptimization() },
+                        onContinue = { completeOnboarding() }
+                    )
+                } else {
+                    MainDashboardScreen(
+                        viewModel = viewModel,
+                        currentUser = currentUser,
+                        availableUsers = availableUsers,
+                        hasStoragePermission = hasStoragePermission,
+                        onUserChanged = { userId ->
+                            currentUser = userId
+                        },
+                        onAddUser = {
+                            val nextId = (availableUsers.maxOrNull() ?: 0) + 1
+                            try {
+                                BlackBoxCore.get().createUser(nextId)
+                                // Auto-generate distinct randomized device profile for this new user
+                                DeviceSpoofManager.getConfig(this, nextId)
+                                refreshUsers()
+                                currentUser = nextId
+                                viewModel.getInstalledAppsWithRetry(nextId)
+                                Toast.makeText(this, "Created User Profile $nextId", Toast.LENGTH_SHORT).show()
+                            } catch (e: Exception) {
+                                Toast.makeText(this, "Failed to create user: ${e.message}", Toast.LENGTH_SHORT).show()
                             }
-                            DeviceSpoofManager.clearConfig(this, targetUser)
-                            refreshUsers()
-                            currentUser = 0
-                            viewModel.getInstalledAppsWithRetry(0)
-                            Toast.makeText(this, "Profile $targetUser deleted", Toast.LENGTH_SHORT).show()
-                        } catch (e: Exception) {
-                            Toast.makeText(this, "Failed to delete profile: ${e.message}", Toast.LENGTH_SHORT).show()
+                        },
+                        onRequestStoragePermission = { requestStorageAccess() },
+                        onOpenAppList = {
+                            val intent = Intent(this, ListActivity::class.java)
+                            intent.putExtra("userID", currentUser)
+                            apkPathResult.launch(intent)
+                        },
+                        onOpenSettings = { SettingActivity.start(this) },
+                        onOpenFakeLocation = {
+                            val intent = Intent(this, FakeManagerActivity::class.java)
+                            intent.putExtra("userID", currentUser)
+                            startActivity(intent)
+                        },
+                        onOpenDeviceSpoof = { targetUser ->
+                            DeviceSpoofActivity.start(this, targetUser)
+                        },
+                        onDeleteProfile = { targetUser ->
+                            try {
+                                BlackBoxCore.get().deleteUser(targetUser)
+                                AppManager.mRemarkSharedPreferences.edit {
+                                    remove("Remark$targetUser")
+                                    remove("AppList$targetUser")
+                                }
+                                DeviceSpoofManager.clearConfig(this, targetUser)
+                                refreshUsers()
+                                currentUser = 0
+                                viewModel.getInstalledAppsWithRetry(0)
+                                Toast.makeText(this, "Profile $targetUser deleted", Toast.LENGTH_SHORT).show()
+                            } catch (e: Exception) {
+                                Toast.makeText(this, "Failed to delete profile: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
                         }
-                    }
-                )
+                    )
+                }
             }
         }
 
@@ -242,7 +275,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        refreshStoragePermission()
+        refreshPermissions()
         refreshUsers()
         viewModel.getInstalledAppsWithRetry(currentUser)
     }
@@ -266,8 +299,47 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun refreshStoragePermission() {
+    private fun refreshPermissions() {
         hasStoragePermission = top.niunaijun.blackbox.utils.StoragePermissionHelper.hasStoragePermission(this)
+        hasNotificationPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+        val powerManager = getSystemService(POWER_SERVICE) as? PowerManager
+        hasBatteryOptimizationExempt = powerManager?.isIgnoringBatteryOptimizations(packageName) ?: true
+
+        val prefs = getSharedPreferences("app_permission_prefs", Context.MODE_PRIVATE)
+        val hasCompleted = prefs.getBoolean("has_completed_onboarding", false)
+        if (!hasCompleted && (!hasStoragePermission || !hasNotificationPermission)) {
+            showPermissionOnboarding = true
+        }
+    }
+
+    private fun completeOnboarding() {
+        getSharedPreferences("app_permission_prefs", Context.MODE_PRIVATE).edit {
+            putBoolean("has_completed_onboarding", true)
+        }
+        showPermissionOnboarding = false
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    private fun requestBatteryOptimization() {
+        try {
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:$packageName")
+            }
+            startActivity(intent)
+        } catch (_: Exception) {
+            try {
+                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+            } catch (_: Exception) {}
+        }
     }
 
     private fun requestStorageAccess() {
@@ -645,28 +717,34 @@ fun MainDashboardScreen(
                     .fillMaxSize()
                     .weight(1f)
             ) {
-                if (filteredApps.isEmpty()) {
-                    EmptyAppsDashboard(onCloneFirstApp = onOpenAppList)
-                } else {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(4),
-                        contentPadding = PaddingValues(16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .testTag("cloned_apps_grid")
-                    ) {
-                        items(filteredApps, key = { it.packageName }) { app ->
-                            VirtualAppItem(
-                                app = app,
-                                onClick = {
-                                    isLaunching = true
-                                    Toast.makeText(context, "Starting ${app.name}...", Toast.LENGTH_SHORT).show()
-                                    viewModel.launchApk(app.packageName, currentUser)
-                                },
-                                onLongClick = { selectedAppForMenu = app }
-                            )
+                Crossfade(
+                    targetState = filteredApps,
+                    animationSpec = tween(150),
+                    label = "apps_transition"
+                ) { currentApps ->
+                    if (currentApps.isEmpty()) {
+                        EmptyAppsDashboard(onCloneFirstApp = onOpenAppList)
+                    } else {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(4),
+                            contentPadding = PaddingValues(16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .testTag("cloned_apps_grid")
+                        ) {
+                            items(currentApps, key = { it.packageName }) { app ->
+                                VirtualAppItem(
+                                    app = app,
+                                    onClick = {
+                                        isLaunching = true
+                                        Toast.makeText(context, "Starting ${app.name}...", Toast.LENGTH_SHORT).show()
+                                        viewModel.launchApk(app.packageName, currentUser)
+                                    },
+                                    onLongClick = { selectedAppForMenu = app }
+                                )
+                            }
                         }
                     }
                 }
@@ -694,6 +772,85 @@ fun MainDashboardScreen(
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium
                                 )
+                            }
+                        }
+                    }
+                }
+
+                // Installing progress overlay with small icon and round progress
+                val installProgress by viewModel.installProgressLiveData.observeAsState()
+                if (installProgress?.isInstalling == true) {
+                    val progress = installProgress!!
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Card(
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                            modifier = Modifier
+                                .padding(24.dp)
+                                .widthIn(max = 320.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(76.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(76.dp),
+                                        strokeWidth = 3.5.dp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Surface(
+                                        shape = CircleShape,
+                                        modifier = Modifier.size(54.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant
+                                    ) {
+                                        if (progress.icon != null) {
+                                            AppIconView(
+                                                icon = progress.icon,
+                                                contentDescription = progress.appName,
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(6.dp)
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Default.Apps,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(12.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = if (progress.appName.isNotEmpty()) "Installing ${progress.appName}" else stringResource(R.string.installing_app_title),
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = stringResource(R.string.installing_app_sub),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
                             }
                         }
                     }
@@ -1280,3 +1437,210 @@ fun ActionRowItem(
         )
     }
 }
+
+@Composable
+fun PermissionOnboardingScreen(
+    hasStorage: Boolean,
+    hasNotification: Boolean,
+    hasBatteryOpt: Boolean,
+    onRequestStorage: () -> Unit,
+    onRequestNotification: () -> Unit,
+    onRequestBatteryOpt: () -> Unit,
+    onContinue: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(modifier = Modifier.height(36.dp))
+
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(76.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(42.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Text(
+                text = stringResource(R.string.permission_guide_title),
+                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = stringResource(R.string.permission_guide_desc),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // Step 1: Storage
+            PermissionStepCard(
+                icon = Icons.Default.FolderOpen,
+                title = stringResource(R.string.permission_storage_title),
+                description = stringResource(R.string.permission_storage_desc),
+                isGranted = hasStorage,
+                actionText = stringResource(R.string.permission_grant),
+                onAction = onRequestStorage
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Step 2: Notifications
+            PermissionStepCard(
+                icon = Icons.Default.Notifications,
+                title = stringResource(R.string.permission_notification_title),
+                description = stringResource(R.string.permission_notification_desc),
+                isGranted = hasNotification,
+                actionText = stringResource(R.string.permission_grant),
+                onAction = onRequestNotification
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Step 3: Battery Optimization
+            PermissionStepCard(
+                icon = Icons.Default.Power,
+                title = stringResource(R.string.permission_battery_title),
+                description = stringResource(R.string.permission_battery_desc),
+                isGranted = hasBatteryOpt,
+                actionText = stringResource(R.string.permission_grant),
+                onAction = onRequestBatteryOpt
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Button(
+                onClick = onContinue,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .testTag("btn_permission_continue"),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Text(
+                    text = stringResource(R.string.permission_continue),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+        }
+    }
+}
+
+@Composable
+fun PermissionStepCard(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    isGranted: Boolean,
+    actionText: String,
+    onAction: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isGranted)
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            else
+                MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isGranted) 0.dp else 2.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = if (isGranted)
+                    MaterialTheme.colorScheme.primaryContainer
+                else
+                    MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.size(44.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = if (isGranted) Icons.Default.Check else icon,
+                        contentDescription = null,
+                        tint = if (isGranted)
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 16.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            if (isGranted) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Text(
+                        text = stringResource(R.string.permission_granted),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            } else {
+                FilledTonalButton(
+                    onClick = onAction,
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = actionText,
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+            }
+        }
+    }
+}
+

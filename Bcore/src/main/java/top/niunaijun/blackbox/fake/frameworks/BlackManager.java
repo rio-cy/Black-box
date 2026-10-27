@@ -41,11 +41,10 @@ public abstract class BlackManager<Service extends IInterface> {
             mServiceCreationFailed.set(false);
         }
 
-        if (mService != null && mService.asBinder().pingBinder() && mService.asBinder().isBinderAlive()) {
+        if (mService != null && mService.asBinder().isBinderAlive()) {
             return mService;
         }
 
-        
         long currentTime = System.currentTimeMillis();
         if (currentTime - mLastServiceCreationTime < MIN_SERVICE_CREATION_INTERVAL_MS) {
             Log.d(TAG, "Rate limiting service creation for " + getServiceName());
@@ -60,9 +59,9 @@ public abstract class BlackManager<Service extends IInterface> {
                 return null;
             }
             
-            
             if (!binder.isBinderAlive()) {
                 Log.w(TAG, "Binder is not alive for service: " + getServiceName());
+                BlackBoxCore.get().clearService(getServiceName());
                 markServiceCreationFailed();
                 return null;
             }
@@ -74,17 +73,18 @@ public abstract class BlackManager<Service extends IInterface> {
                     .call(binder);
             
             if (mService != null) {
-                
                 try {
                     if (!mService.asBinder().isBinderAlive()) {
                         Log.w(TAG, "Service binder is not alive after creation: " + getServiceName());
                         mService = null;
+                        BlackBoxCore.get().clearService(getServiceName());
                         markServiceCreationFailed();
                         return null;
                     }
                 } catch (Exception e) {
                     Log.w(TAG, "Error checking service binder health: " + getServiceName(), e);
                     mService = null;
+                    BlackBoxCore.get().clearService(getServiceName());
                     markServiceCreationFailed();
                     return null;
                 }
@@ -102,12 +102,12 @@ public abstract class BlackManager<Service extends IInterface> {
                                 Log.w(TAG, "Error unlinking death recipient for " + getServiceName(), e);
                             }
                             mService = null;
+                            BlackBoxCore.get().clearService(getServiceName());
                             Log.w(TAG, "Service died: " + getServiceName());
                         }
                     }, 0);
                 } catch (Exception e) {
                     Log.w(TAG, "Error linking death recipient for " + getServiceName(), e);
-                    
                 }
                 
                 Log.d(TAG, "Successfully created service: " + getServiceName());
@@ -131,19 +131,18 @@ public abstract class BlackManager<Service extends IInterface> {
         mLastRetryTime = System.currentTimeMillis();
     }
     
-    
     public void clearServiceCache() {
         mService = null;
+        BlackBoxCore.get().clearService(getServiceName());
         Log.d(TAG, "Cleared service cache for " + getServiceName());
     }
-    
     
     public boolean isServiceHealthy() {
         if (mService == null) {
             return false;
         }
         try {
-            return mService.asBinder().pingBinder() && mService.asBinder().isBinderAlive();
+            return mService.asBinder().isBinderAlive();
         } catch (Exception e) {
             Log.w(TAG, "Service health check failed for " + getServiceName(), e);
             return false;
