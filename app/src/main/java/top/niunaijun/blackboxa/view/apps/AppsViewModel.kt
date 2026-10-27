@@ -1,5 +1,6 @@
 package top.niunaijun.blackboxa.view.apps
 
+import android.annotation.SuppressLint
 import android.graphics.drawable.Drawable
 import androidx.lifecycle.MutableLiveData
 import top.niunaijun.blackboxa.bean.AppInfo
@@ -28,11 +29,12 @@ class AppsViewModel(private val repo: AppsRepository) : BaseViewModel() {
         getInstalledAppsWithRetry(userId)
     }
 
+    @SuppressLint("NullSafeMutableLiveData")
     fun getInstalledAppsWithRetry(userId: Int) {
         // Emit cached apps immediately to prevent UI blanking
         val cached = userAppsCache[userId]
         if (cached != null) {
-            appsLiveData.value = cached
+            appsLiveData.value = cached!!
         }
 
         launchOnUI {
