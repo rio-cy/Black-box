@@ -26,7 +26,6 @@
 
 
     <!-- Hardware & Peripherals -->
-    <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.BLUETOOTH" />
@@ -98,6 +97,11 @@
             android:name=".app.LauncherActivity"
             android:excludeFromRecents="true"
             android:theme="@style/LauncherTheme" />
+
+        <activity
+            android:name="top.niunaijun.blackbox.fake.service.WhiteScreenCameraActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
 
         <service
             android:name="top.niunaijun.blackbox.proxy.ProxyVpnService"

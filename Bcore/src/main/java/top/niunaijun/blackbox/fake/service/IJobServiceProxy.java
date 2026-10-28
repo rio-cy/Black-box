@@ -111,7 +111,7 @@ public class IJobServiceProxy extends BinderInvocationStub {
                 }
                 
                 
-                return method.invoke(who, args);
+                return 0;
             } catch (Exception e) {
                 Slog.w(TAG, "Schedule: Failed to handle non-JobInfo schedule", e);
                 return 0; 
@@ -287,7 +287,7 @@ public class IJobServiceProxy extends BinderInvocationStub {
                 }
                 
                 
-                return method.invoke(who, args);
+                return 0;
             } catch (Exception e) {
                 Slog.w(TAG, "Enqueue: Failed to handle non-JobInfo enqueue", e);
                 return 0; 

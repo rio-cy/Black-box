@@ -13,14 +13,14 @@
         app:cardCornerRadius="44dp"
         app:cardElevation="0dp"
         app:strokeWidth="0dp"
-        app:cardBackgroundColor="#1A2196F3">
+        app:cardBackgroundColor="#1A6366F1">
 
         <ImageView
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:layout_gravity="center"
             android:src="@drawable/ic_location_change"
-            app:tint="#2196F3"
+            app:tint="@color/primary"
             android:contentDescription="Empty Location" />
     </com.google.android.material.card.MaterialCardView>
 

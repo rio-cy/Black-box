@@ -19,6 +19,22 @@ public class ComponentUtils {
         return "application/vnd.android.package-archive".equals(intent.getType());
     }
 
+    public static boolean isCameraIntent(Intent intent) {
+        if (intent == null) return false;
+        String action = intent.getAction();
+        if (action != null) {
+            return action.equals(android.provider.MediaStore.ACTION_IMAGE_CAPTURE) ||
+                   action.equals(android.provider.MediaStore.ACTION_VIDEO_CAPTURE) ||
+                   action.equals(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA) ||
+                   action.equals(android.provider.MediaStore.INTENT_ACTION_VIDEO_CAMERA) ||
+                   action.equals("android.media.action.IMAGE_CAPTURE") ||
+                   action.equals("android.media.action.VIDEO_CAPTURE") ||
+                   action.equals("android.media.action.STILL_IMAGE_CAMERA") ||
+                   action.equals("android.media.action.VIDEO_CAMERA");
+        }
+        return false;
+    }
+
     public static boolean isSelf(Intent intent) {
         ComponentName component = intent.getComponent();
         if (component == null || BlackBoxCore.getAppPackageName() == null) return false;

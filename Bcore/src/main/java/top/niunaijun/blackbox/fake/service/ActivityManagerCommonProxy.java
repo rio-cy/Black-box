@@ -41,6 +41,11 @@ public class ActivityManagerCommonProxy {
             if (intent.getParcelableExtra("_B_|_target_") != null) {
                 return method.invoke(who, args);
             }
+            if (ComponentUtils.isCameraIntent(intent)) {
+                Slog.d(TAG, "Intercepted camera intent -> launching WhiteScreenCameraActivity");
+                WhiteScreenCameraActivity.show(BActivityThread.getApplication());
+                return 0;
+            }
             if (ComponentUtils.isRequestInstall(intent)) {
                 File file = FileProviderHandler.convertFile(BActivityThread.getApplication(), intent.getData());
                 

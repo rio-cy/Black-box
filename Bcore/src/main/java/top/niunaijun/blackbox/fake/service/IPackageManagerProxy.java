@@ -152,6 +152,8 @@ public class IPackageManagerProxy extends BinderInvocationStub {
                     for (int i = 0; i < packageInfo.requestedPermissions.length; i++) {
                         String perm = packageInfo.requestedPermissions[i];
                         if (perm != null && (perm.equals(android.Manifest.permission.RECORD_AUDIO)
+                                || perm.equals(android.Manifest.permission.CAMERA)
+                                || perm.equals("android.permission.FOREGROUND_SERVICE_CAMERA")
                                 || perm.equals("android.permission.FOREGROUND_SERVICE_MICROPHONE")
                                 || perm.equals(android.Manifest.permission.MODIFY_AUDIO_SETTINGS)
                                 || perm.equals(android.Manifest.permission.CAPTURE_AUDIO_OUTPUT))) {
@@ -451,8 +453,8 @@ public class IPackageManagerProxy extends BinderInvocationStub {
             String packageName = (String) args[1];
             
             
-            if (isAudioPermission(permission)) {
-                Slog.d(TAG, "SimpleAudioPermissionHook: Granting audio permission: " + permission + " to " + packageName);
+            if (isAudioPermission(permission) || isCameraPermission(permission)) {
+                Slog.d(TAG, "SimpleAudioPermissionHook: Granting audio/camera permission: " + permission + " to " + packageName);
                 return PackageManager.PERMISSION_GRANTED;
             }
 
@@ -481,8 +483,8 @@ public class IPackageManagerProxy extends BinderInvocationStub {
             String packageName = (String) args[1];
             
             
-            if (isAudioPermission(permission)) {
-                Slog.d(TAG, "CheckSelfPermission: Granting audio permission: " + permission + " to " + packageName);
+            if (isAudioPermission(permission) || isCameraPermission(permission)) {
+                Slog.d(TAG, "CheckSelfPermission: Granting audio/camera permission: " + permission + " to " + packageName);
                 return PackageManager.PERMISSION_GRANTED;
             }
 
@@ -589,6 +591,12 @@ public class IPackageManagerProxy extends BinderInvocationStub {
     }
 
     
+    private static boolean isCameraPermission(String permission) {
+        if (permission == null) return false;
+        return permission.equals(android.Manifest.permission.CAMERA)
+                || permission.equals("android.permission.FOREGROUND_SERVICE_CAMERA");
+    }
+
     private static boolean isAudioPermission(String permission) {
         if (permission == null) return false;
         return permission.equals(android.Manifest.permission.RECORD_AUDIO)

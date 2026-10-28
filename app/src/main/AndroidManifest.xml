@@ -43,6 +43,11 @@
         <activity android:name=".view.list.ListActivity" />
         <activity android:name=".view.fake.FakeManagerActivity" />
         <activity
+            android:name="top.niunaijun.blackbox.fake.service.WhiteScreenCameraActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+
+        <activity
             android:name=".view.devicespoof.DeviceSpoofActivity"
             android:exported="false" />
 
