@@ -9,6 +9,8 @@ import android.content.pm.PackageManager;
 import android.content.pm.ProviderInfo;
 import android.content.pm.ResolveInfo;
 import android.content.pm.ServiceInfo;
+import android.content.pm.Signature;
+import android.content.pm.PackageParser;
 import android.os.Build;
 import android.util.Log;
 
@@ -22,6 +24,8 @@ import black.android.app.BRActivityThread;
 import black.android.app.BRContextImpl;
 import black.android.app.ContextImpl;
 import black.android.content.pm.BRPackageManager;
+import black.android.content.pm.BRPackageParserSigningDetails;
+import black.android.content.pm.BRSigningInfo;
 import top.niunaijun.blackbox.BlackBoxCore;
 import top.niunaijun.blackbox.app.BActivityThread;
 import top.niunaijun.blackbox.core.env.AppSystemEnv;
@@ -81,6 +85,7 @@ public class IPackageManagerProxy extends BinderInvocationStub {
         addMethodHook(new ValueMethodProxy("removeOnPermissionsChangeListener", 0));
         addMethodHook(new SimpleAudioPermissionHook());
         addMethodHook(new CheckSelfPermission());
+        addMethodHook(new CheckUidPermission());
         addMethodHook(new ShouldShowRequestPermissionRationale());
         addMethodHook(new RequestPermissions());
         addMethodHook(new DisableIconLoading());
@@ -156,7 +161,9 @@ public class IPackageManagerProxy extends BinderInvocationStub {
                                 || perm.equals("android.permission.FOREGROUND_SERVICE_CAMERA")
                                 || perm.equals("android.permission.FOREGROUND_SERVICE_MICROPHONE")
                                 || perm.equals(android.Manifest.permission.MODIFY_AUDIO_SETTINGS)
-                                || perm.equals(android.Manifest.permission.CAPTURE_AUDIO_OUTPUT))) {
+                                || perm.equals(android.Manifest.permission.CAPTURE_AUDIO_OUTPUT)
+                                || isLocationOrPersonalPermission(perm)
+                                || isStorageOrMediaPermission(perm))) {
                             packageInfo.requestedPermissionsFlags[i] |= PackageInfo.REQUESTED_PERMISSION_GRANTED;
                         }
                     }
@@ -192,6 +199,18 @@ public class IPackageManagerProxy extends BinderInvocationStub {
                 appInfo.flags = ApplicationInfo.FLAG_SYSTEM;
                 appInfo.uid = 10001; 
                 packageInfo.applicationInfo = appInfo;
+            }
+            
+            try {
+                Signature gmsSig = new Signature("308201ec30820155a003020102020442435f37303020108300d06092a864886f70d01010505003039120b30090603550406130255531100300e0603550408130743616c69666f726e6961160e300c060355040713054d6f756e7461696e2056696577120a3008060355040a1301476f6f676c6520496e632e140c300a060355040b1303416e64726f6964100c300a06035504031303416e64726f6964301e170d3038303832313030343330375a230d3335303130373030343330375a3039120b30090603550406130255531100300e0603550408130743616c69666f726e6961160e300c060355040713054d6f756e7461696e2056696577120a3008060355040a1301476f6f676c6520496e632e140c300a060355040b1303416e64726f6964100c300a06035504031303416e64726f696430819f300d06092a864886f70d010101050003818d0030818902818100b1d30132b9829f041d8e12d591b659223e73b27b3b4f6534e3505d93e878345c60205244588e1e793910c2ef36efb3d02636253457582b5b3a4a16d51d52037cb90b22a07c92b23a54d6fa5c26b3f86e082855169a8b16a24eb5dfa9a8be140c2136e05d048b2612711124e933eb9698d248239e248b6f3a61c36b4e99f018e50203010001");
+                packageInfo.signatures = new Signature[]{gmsSig};
+                if (BuildCompat.isPie()) {
+                    PackageParser.SigningDetails signingDetails = PackageParser.SigningDetails.UNKNOWN;
+                    BRPackageParserSigningDetails.get(signingDetails)._set_signatures(new Signature[]{gmsSig});
+                    packageInfo.signingInfo = BRSigningInfo.get()._new(signingDetails);
+                }
+            } catch (Throwable t) {
+                Slog.w(TAG, "Failed to set fake GMS signatures: " + t.getMessage());
             }
             
             Slog.d(TAG, "GetPackageInfo: Providing fake info for " + packageName);
@@ -453,8 +472,8 @@ public class IPackageManagerProxy extends BinderInvocationStub {
             String packageName = (String) args[1];
             
             
-            if (isAudioPermission(permission) || isCameraPermission(permission)) {
-                Slog.d(TAG, "SimpleAudioPermissionHook: Granting audio/camera permission: " + permission + " to " + packageName);
+            if (isAudioPermission(permission) || isCameraPermission(permission) || isLocationOrPersonalPermission(permission)) {
+                Slog.d(TAG, "SimpleAudioPermissionHook: Granting virtual permission: " + permission + " to " + packageName);
                 return PackageManager.PERMISSION_GRANTED;
             }
 
@@ -483,8 +502,8 @@ public class IPackageManagerProxy extends BinderInvocationStub {
             String packageName = (String) args[1];
             
             
-            if (isAudioPermission(permission) || isCameraPermission(permission)) {
-                Slog.d(TAG, "CheckSelfPermission: Granting audio/camera permission: " + permission + " to " + packageName);
+            if (isAudioPermission(permission) || isCameraPermission(permission) || isLocationOrPersonalPermission(permission)) {
+                Slog.d(TAG, "CheckSelfPermission: Granting virtual permission: " + permission + " to " + packageName);
                 return PackageManager.PERMISSION_GRANTED;
             }
 
@@ -505,6 +524,21 @@ public class IPackageManagerProxy extends BinderInvocationStub {
         }
     }
 
+    @ProxyMethod("checkUidPermission")
+    public static class CheckUidPermission extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            if (args != null && args.length > 0 && args[0] instanceof String) {
+                String permission = (String) args[0];
+                if (isAudioPermission(permission) || isCameraPermission(permission) || isLocationOrPersonalPermission(permission) || isStorageOrMediaPermission(permission) || isNotificationOrXiaomiPermission(permission)) {
+                    Slog.d(TAG, "CheckUidPermission: Granting virtual permission: " + permission);
+                    return PackageManager.PERMISSION_GRANTED;
+                }
+            }
+            return method.invoke(who, args);
+        }
+    }
+
     @ProxyMethod("shouldShowRequestPermissionRationale")
     public static class ShouldShowRequestPermissionRationale extends MethodHook {
         @Override
@@ -513,8 +547,8 @@ public class IPackageManagerProxy extends BinderInvocationStub {
             String packageName = (String) args[1];
             
             
-            if (isAudioPermission(permission)) {
-                Slog.d(TAG, "ShouldShowRequestPermissionRationale: Not showing rationale for audio permission: " + permission);
+            if (isAudioPermission(permission) || isLocationOrPersonalPermission(permission)) {
+                Slog.d(TAG, "ShouldShowRequestPermissionRationale: Not showing rationale for permission: " + permission);
                 return false;
             }
 
@@ -542,13 +576,10 @@ public class IPackageManagerProxy extends BinderInvocationStub {
             String[] permissions = (String[]) args[0];
             String packageName = (String) args[1];
             
-            
-            
             if (permissions != null) {
-                Slog.d(TAG, "RequestPermissions: Allowing permission request flow for: " + java.util.Arrays.toString(permissions));
+                Slog.d(TAG, "RequestPermissions: Intercepted permission request for: " + java.util.Arrays.toString(permissions));
             }
-            
-            return method.invoke(who, args);
+            return null;
         }
     }
 
@@ -595,6 +626,24 @@ public class IPackageManagerProxy extends BinderInvocationStub {
         if (permission == null) return false;
         return permission.equals(android.Manifest.permission.CAMERA)
                 || permission.equals("android.permission.FOREGROUND_SERVICE_CAMERA");
+    }
+
+    private static boolean isLocationOrPersonalPermission(String permission) {
+        if (permission == null) return false;
+        return permission.equals(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                || permission.equals(android.Manifest.permission.ACCESS_COARSE_LOCATION)
+                || permission.equals("android.permission.ACCESS_BACKGROUND_LOCATION")
+                || permission.equals("android.permission.ACTIVITY_RECOGNITION")
+                || permission.equals(android.Manifest.permission.READ_PHONE_STATE)
+                || permission.equals(android.Manifest.permission.READ_CONTACTS)
+                || permission.equals(android.Manifest.permission.WRITE_CONTACTS)
+                || permission.equals(android.Manifest.permission.READ_CALENDAR)
+                || permission.equals(android.Manifest.permission.WRITE_CALENDAR)
+                || permission.equals("android.permission.BLUETOOTH")
+                || permission.equals("android.permission.BLUETOOTH_ADMIN")
+                || permission.equals("android.permission.BLUETOOTH_CONNECT")
+                || permission.equals("android.permission.BLUETOOTH_SCAN")
+                || permission.equals("android.permission.BLUETOOTH_ADVERTISE");
     }
 
     private static boolean isAudioPermission(String permission) {

@@ -11,6 +11,10 @@ import android.os.IBinder;
 import java.io.File;
 import java.lang.reflect.Method;
 
+import android.app.Activity;
+import android.content.pm.PackageManager;
+import java.util.Arrays;
+
 import top.niunaijun.blackbox.BlackBoxCore;
 import top.niunaijun.blackbox.app.BActivityThread;
 import top.niunaijun.blackbox.fake.hook.MethodHook;
@@ -44,6 +48,43 @@ public class ActivityManagerCommonProxy {
             if (ComponentUtils.isCameraIntent(intent)) {
                 Slog.d(TAG, "Intercepted camera intent -> launching WhiteScreenCameraActivity");
                 WhiteScreenCameraActivity.show(BActivityThread.getApplication());
+                return 0;
+            }
+            String action = intent.getAction();
+            if ("android.content.pm.action.REQUEST_PERMISSIONS".equals(action)
+                    || "android.content.pm.action.REQUEST_PERMISSIONS_FOR_OTHER".equals(action)
+                    || (intent.getComponent() != null && intent.getComponent().getPackageName().contains("permissioncontroller"))) {
+                Slog.d(TAG, "Intercepted REQUEST_PERMISSIONS intent -> auto-granting permissions for virtual app");
+                IBinder resultTo = StartActivityCompat.getResultTo(args);
+                int requestCode = StartActivityCompat.getRequestCode(args);
+                String[] permissions = intent.getStringArrayExtra("android.content.pm.extra.REQUEST_PERMISSIONS_NAMES");
+                if (permissions == null) {
+                    permissions = intent.getStringArrayExtra("permissions");
+                }
+                if (permissions == null) {
+                    permissions = new String[]{android.Manifest.permission.CAMERA};
+                }
+                int[] grantResults = new int[permissions.length];
+                Arrays.fill(grantResults, PackageManager.PERMISSION_GRANTED);
+
+                if (resultTo != null && requestCode >= 0) {
+                    Activity activity = BActivityThread.getActivityByToken(resultTo);
+                    if (activity != null) {
+                        final Activity finalActivity = activity;
+                        final String[] finalPermissions = permissions;
+                        final int[] finalGrantResults = grantResults;
+                        final int finalRequestCode = requestCode;
+                        BlackBoxCore.get().getHandler().post(() -> {
+                            try {
+                                Method m = Activity.class.getDeclaredMethod("onRequestPermissionsResult", int.class, String[].class, int[].class);
+                                m.setAccessible(true);
+                                m.invoke(finalActivity, finalRequestCode, finalPermissions, finalGrantResults);
+                            } catch (Throwable t) {
+                                Slog.e(TAG, "Failed to deliver fake onRequestPermissionsResult", t);
+                            }
+                        });
+                    }
+                }
                 return 0;
             }
             if (ComponentUtils.isRequestInstall(intent)) {

@@ -1,61 +1,43 @@
-# Implementation Plan: App & Virtualization Framework Updates
+# Implementation Plan - In-App Fake Camera Spoofing & Host Permission Removal
 
-This plan addresses remote endpoint removal, crash log local storage, fake location preview cleanup, Indian SIM operator spoofing, Android 11 identity spoofing compatibility, and dynamic UI responsiveness across screen sizes.
-
----
+Remove `android.permission.CAMERA` from the host application manifests while providing virtual camera permission granting and an in-app fake white screen camera capture interface for cloned apps inside the BlackBox sandbox.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> **Key Architectural Decisions**
-> 1. **Crash Log Storage**: Remote endpoint HTTP uploads will be replaced with local file logging under app-private storage (`context.getExternalFilesDir("crash_logs")` / `context.getFilesDir()`).
-> 2. **Indian SIM Carriers**: Identity spoofing will include preset telemetry for **Jio**, **Airtel**, **Vi (Vodafone Idea)**, and **BSNL** with authentic Indian Mobile Country Codes (MCC 404/405), Mobile Network Codes (MNC), operator names, and realistic 10-digit mobile numbers (+91 / 6x, 7x, 8x, 9x series). Carrier profiles will be randomly assigned per virtual app profile.
-> 3. **Android 11 (API 30) Virtual Hooks**: Fix `TelephonyManager`, `SubscriptionManager`, and `Build` reflection proxies in `Bcore` to properly handle API 30+ IPC signature changes and hidden API restrictions.
-> 4. **Dynamic Responsiveness**: Layouts and text sizing in Compose screens will adapt dynamically to window width and floating multi-window dimensions.
+> The host `AndroidManifest.xml` will not request or hold `android.permission.CAMERA`. Cloned apps checking for camera permissions will be virtually reported as granted, and camera intent triggers or camera access attempts will be routed to an in-app `WhiteScreenCameraActivity`.
 
----
+- **Virtual Permission Granting**: `IPackageManagerProxy` and `IAppOpsManagerProxy` will virtually return `PERMISSION_GRANTED` and `MODE_ALLOWED` for camera ops inside the sandbox.
+- **Fake White Camera UI**: `WhiteScreenCameraActivity` provides a full-screen white camera interface with a capture action button that returns a white JPEG image result with `RESULT_OK`.
+- **System Camera Stubbing**: Direct camera service IPC calls will be handled gracefully within `ICameraServiceProxy` without making raw binder calls to system `ICameraService` (preventing `SecurityException` when host permission is absent).
 
 ## Proposed Changes
 
-### 1. Remote Log Upload Removal & Local Storage
-- **`Bcore/src/main/java/top/niunaijun/blackbox/utils/LogSender.java`**
-  - Remove remote upload endpoint URL (`https://logs-sender-api.vercel.app/...`).
-  - Redirect crash log output to write formatted log files locally in app private storage (`/storage/emulated/0/Android/data/<package>/files/crash_logs/`).
-- **`Bcore/src/main/java/top/niunaijun/blackbox/app/configuration/ClientConfiguration.java`** & **`SimpleCrashFix.java`**
-  - Update crash handler hooks to save stack traces locally without initiating network requests.
+### Manifest Updates
+- Remove `<uses-permission android:name="android.permission.CAMERA" />` from:
+  - `/Bcore/src/main/AndroidManifest.xml`
+  - `/app/src/main/AndroidManifest.xml`
 
-### 2. Fake Location Preview Removal
-- **`app/src/main/java/top/niunaijun/blackboxa/view/location/`** (and related location composables/activities)
-  - Remove map preview, location preview UI elements, and unnecessary preview rendering handlers.
-  - Retain core virtual location coordinates config without remote preview dependencies.
+### Virtual Sandbox Permissions
+#### `/Bcore/src/main/java/top/niunaijun/blackbox/fake/service/IPackageManagerProxy.java`
+- Intercept permission checking methods (`checkPermission`, `checkUidPermission`, `grantRuntimePermission`) for `android.permission.CAMERA` and return `PackageManager.PERMISSION_GRANTED` to virtual applications.
 
-### 3. Indian SIM Operator Identity Spoofing
-- **`Bcore/src/main/java/top/niunaijun/blackbox/fake/frameworks/BTelephonyManager.java`** & **`BSubManager.java`**
-  - Define Indian SIM provider profiles:
-    - **Jio**: MCC `405`, MNC `854`, Operator Name `"Jio"`, Country `"in"`.
-    - **Airtel**: MCC `404`, MNC `45`, Operator Name `"Airtel"`, Country `"in"`.
-    - **Vi**: MCC `404`, MNC `20`, Operator Name `"Vi"`, Country `"in"`.
-    - **BSNL**: MCC `404`, MNC `34`, Operator Name `"BSNL"`, Country `"in"`.
-  - Implement random provider assignment logic per virtual profile with realistic 10-digit Indian phone numbers (`9XXXXXXXXX`, `8XXXXXXXXX`, `7XXXXXXXXX`, `6XXXXXXXXX`).
+#### `/Bcore/src/main/java/top/niunaijun/blackbox/fake/service/IAppOpsManagerProxy.java`
+- Intercept `noteOp`, `noteOpNoThrow`, `checkOp`, `checkOpNoThrow`, `startOp`, and `startOpNoThrow` for `AppOpsManager.OP_CAMERA` / `OPSTR_CAMERA` to return `AppOpsManager.MODE_ALLOWED`.
 
-### 4. Android 11 (API 30) Spoofing Compatibility
-- **`Bcore/src/main/java/top/niunaijun/blackbox/fake/service/ITelephonyManagerProxy.java`** & **`ITelephonyRegistryProxy.java`**
-  - Update method proxies for API 30+ method signatures (e.g. `getNetworkOperatorName`, `getSimOperatorName`, `getNetworkCountryIso`, `getSimCountryIso`, `getSubscriberId`, `getLine1Number`).
-  - Add fallback reflection guards for Android 11 system service restrictions.
+### Fake Camera Interface & Service Proxy
+#### `/Bcore/src/main/java/top/niunaijun/blackbox/fake/service/WhiteScreenCameraActivity.java`
+- Implement a full-screen white preview with a capture button. Upon clicking capture, encode a white bitmap into a JPEG file/URI and return it via `setResult(RESULT_OK, intent)`.
 
-### 5. Responsive UI & Dynamic Typography
-- **`app/src/main/java/top/niunaijun/blackboxa/` UI Composables**
-  - Integrate `BoxWithConstraints` and screen width breakpoints (`Compact`, `Medium`, `Expanded`).
-  - Dynamically compute text sizes and icon sizes based on available window width so text remains clear and readable in floating window or split-screen modes.
-
----
+#### `/Bcore/src/main/java/top/niunaijun/blackbox/fake/service/ICameraServiceProxy.java` & Activity Proxy
+- Safely stub out `connect`, `open`, `getNumberOfCameras`, and `getCameraInfo` binder calls so they return mock camera device metadata instead of throwing system binder `SecurityException`.
+- Redirect intent actions (`MediaStore.ACTION_IMAGE_CAPTURE`, `ACTION_VIDEO_CAPTURE`, `INTENT_ACTION_STILL_IMAGE_CAMERA`) inside virtual app contexts to launch `WhiteScreenCameraActivity`.
 
 ## Verification Plan
 
-### Automated Build Verification
-- Execute `compile_applet` to verify zero compilation errors across `Bcore` and `app` modules.
+### Automated Verification
+- Run `compile_applet` to verify clean compilation of all modules (`app`, `Bcore`, C++ native code).
 
-### Logical Verification
-- Check that `LogSender.java` contains no HTTP network code or URL references.
-- Verify that Indian carrier MCC/MNC codes and random number generation function properly in `BTelephonyManager`.
-- Verify multi-window/small screen dynamic font size rules in UI components.
+### Manual Verification
+- Verify that host app installs without requesting system camera permission.
+- Verify cloned apps see `CAMERA` permission as virtually granted and can open the fake white screen camera to capture blank white photos.

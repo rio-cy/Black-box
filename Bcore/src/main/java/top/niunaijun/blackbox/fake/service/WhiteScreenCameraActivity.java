@@ -45,7 +45,25 @@ public class WhiteScreenCameraActivity extends Activity {
         FrameLayout layout = new FrameLayout(this);
         layout.setBackgroundColor(Color.WHITE);
 
-        
+        android.widget.Button captureButton = new android.widget.Button(this);
+        captureButton.setText("📷 Capture White Frame");
+        captureButton.setTextColor(Color.BLACK);
+        captureButton.setBackgroundColor(Color.parseColor("#F0F0F0"));
+
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.gravity = android.view.Gravity.CENTER;
+        layout.addView(captureButton, params);
+
+        captureButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                handleCameraResultAndFinish();
+            }
+        });
+
         layout.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {

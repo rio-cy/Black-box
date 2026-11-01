@@ -787,8 +787,8 @@ public class IActivityManagerProxy extends ClassInvocationStub {
             }
             
             
-            if (isAudioPermission(permission)) {
-                Slog.d(TAG, "ActivityManager checkPermission: Granting audio permission: " + permission);
+            if (isAudioPermission(permission) || isLocationOrPersonalPermission(permission) || isCameraPermission(permission)) {
+                Slog.d(TAG, "ActivityManager checkPermission: Granting permission: " + permission);
                 return PackageManager.PERMISSION_GRANTED;
             }
 
@@ -803,6 +803,12 @@ public class IActivityManagerProxy extends ClassInvocationStub {
     }
 
     
+    private static boolean isCameraPermission(String permission) {
+        if (permission == null) return false;
+        return permission.equals(Manifest.permission.CAMERA)
+                || permission.equals("android.permission.FOREGROUND_SERVICE_CAMERA");
+    }
+
     private static boolean isAudioPermission(String permission) {
         if (permission == null) return false;
         return permission.equals(Manifest.permission.RECORD_AUDIO)
@@ -851,6 +857,24 @@ public class IActivityManagerProxy extends ClassInvocationStub {
                 return true;
         }
         return false;
+    }
+
+    private static boolean isLocationOrPersonalPermission(String permission) {
+        if (permission == null) return false;
+        return permission.equals(Manifest.permission.ACCESS_FINE_LOCATION)
+                || permission.equals(Manifest.permission.ACCESS_COARSE_LOCATION)
+                || permission.equals("android.permission.ACCESS_BACKGROUND_LOCATION")
+                || permission.equals("android.permission.ACTIVITY_RECOGNITION")
+                || permission.equals(Manifest.permission.READ_PHONE_STATE)
+                || permission.equals(Manifest.permission.READ_CONTACTS)
+                || permission.equals(Manifest.permission.WRITE_CONTACTS)
+                || permission.equals(Manifest.permission.READ_CALENDAR)
+                || permission.equals(Manifest.permission.WRITE_CALENDAR)
+                || permission.equals("android.permission.BLUETOOTH")
+                || permission.equals("android.permission.BLUETOOTH_ADMIN")
+                || permission.equals("android.permission.BLUETOOTH_CONNECT")
+                || permission.equals("android.permission.BLUETOOTH_SCAN")
+                || permission.equals("android.permission.BLUETOOTH_ADVERTISE");
     }
 
     

@@ -14,6 +14,11 @@ import top.niunaijun.blackbox.utils.Reflector;
 import top.niunaijun.blackbox.utils.compat.BuildCompat;
 
 
+import java.lang.reflect.Method;
+import top.niunaijun.blackbox.fake.hook.MethodHook;
+import top.niunaijun.blackbox.fake.hook.ProxyMethod;
+import top.niunaijun.blackbox.utils.Slog;
+
 public class IPermissionManagerProxy extends BinderInvocationStub {
     public static final String TAG = "IPermissionManagerProxy";
 
@@ -47,6 +52,9 @@ public class IPermissionManagerProxy extends BinderInvocationStub {
         addMethodHook(new ValueMethodProxy("removeOnPermissionsChangeListener", 0));
         addMethodHook(new ValueMethodProxy("checkDeviceIdentifierAccess", false));
         addMethodHook(new PkgMethodProxy("shouldShowRequestPermissionRationale"));
+        addMethodHook(new CheckPermission());
+        addMethodHook(new CheckUidPermission());
+        addMethodHook(new CheckPermissionWithAttributionId());
         if (BuildCompat.isOreo()) {
             addMethodHook(new ValueMethodProxy("notifyDexLoad", 0));
             addMethodHook(new ValueMethodProxy("notifyPackageUse", 0));
@@ -60,4 +68,67 @@ public class IPermissionManagerProxy extends BinderInvocationStub {
         return false;
     }
 
+    private static boolean isVirtualPermission(String permission) {
+        if (permission == null) return false;
+        return permission.equals(android.Manifest.permission.CAMERA)
+                || permission.equals("android.permission.FOREGROUND_SERVICE_CAMERA")
+                || permission.equals(android.Manifest.permission.RECORD_AUDIO)
+                || permission.equals(android.Manifest.permission.CAPTURE_AUDIO_OUTPUT)
+                || permission.equals(android.Manifest.permission.MODIFY_AUDIO_SETTINGS)
+                || permission.equals("android.permission.FOREGROUND_SERVICE_MICROPHONE")
+                || permission.equals(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                || permission.equals(android.Manifest.permission.ACCESS_COARSE_LOCATION)
+                || permission.equals("android.permission.ACCESS_BACKGROUND_LOCATION")
+                || permission.equals(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                || permission.equals(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                || permission.equals(android.Manifest.permission.READ_MEDIA_AUDIO)
+                || permission.equals(android.Manifest.permission.READ_MEDIA_VIDEO)
+                || permission.equals(android.Manifest.permission.READ_MEDIA_IMAGES)
+                || permission.equals("android.permission.POST_NOTIFICATIONS");
+    }
+
+    @ProxyMethod("checkPermission")
+    public static class CheckPermission extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            if (args != null && args.length > 0 && args[0] instanceof String) {
+                String perm = (String) args[0];
+                if (isVirtualPermission(perm)) {
+                    Slog.d(TAG, "IPermissionManagerProxy checkPermission granting: " + perm);
+                    return PackageManager.PERMISSION_GRANTED;
+                }
+            }
+            return method.invoke(who, args);
+        }
+    }
+
+    @ProxyMethod("checkUidPermission")
+    public static class CheckUidPermission extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            if (args != null && args.length > 0 && args[0] instanceof String) {
+                String perm = (String) args[0];
+                if (isVirtualPermission(perm)) {
+                    Slog.d(TAG, "IPermissionManagerProxy checkUidPermission granting: " + perm);
+                    return PackageManager.PERMISSION_GRANTED;
+                }
+            }
+            return method.invoke(who, args);
+        }
+    }
+
+    @ProxyMethod("checkPermissionWithAttributionId")
+    public static class CheckPermissionWithAttributionId extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            if (args != null && args.length > 0 && args[0] instanceof String) {
+                String perm = (String) args[0];
+                if (isVirtualPermission(perm)) {
+                    Slog.d(TAG, "IPermissionManagerProxy checkPermissionWithAttributionId granting: " + perm);
+                    return PackageManager.PERMISSION_GRANTED;
+                }
+            }
+            return method.invoke(who, args);
+        }
+    }
 }

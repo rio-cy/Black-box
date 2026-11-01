@@ -186,8 +186,8 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
             try {
                 int op = (int) args[0];
                 String name = getOpPublicName(op);
-                if (name != null && (name.contains("RECORD_AUDIO") || name.contains("AUDIO") || name.contains("MICROPHONE"))) {
-                    Slog.d(TAG, "AppOps NoteOp: Allowing RECORD_AUDIO operation: " + name);
+                if (name != null && (name.contains("RECORD_AUDIO") || name.contains("AUDIO") || name.contains("MICROPHONE") || name.contains("CAMERA"))) {
+                    Slog.d(TAG, "AppOps NoteOp: Allowing operation: " + name);
                     return AppOpsManager.MODE_ALLOWED;
                 }
             } catch (Throwable ignored) {
@@ -204,8 +204,8 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
             try {
                 int op = (int) args[0];
                 String name = getOpPublicName(op);
-                if (name != null && (name.contains("RECORD_AUDIO") || name.contains("AUDIO") || name.contains("MICROPHONE"))) {
-                    Slog.d(TAG, "AppOps NoteOpNoThrow: Allowing RECORD_AUDIO operation: " + name);
+                if (name != null && (name.contains("RECORD_AUDIO") || name.contains("AUDIO") || name.contains("MICROPHONE") || name.contains("CAMERA"))) {
+                    Slog.d(TAG, "AppOps NoteOpNoThrow: Allowing operation: " + name);
                     return AppOpsManager.MODE_ALLOWED;
                 }
             } catch (Throwable ignored) {

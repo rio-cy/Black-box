@@ -195,19 +195,22 @@ public class PackageManagerCompat {
         } catch (PackageManager.NameNotFoundException ignored) {
         }
         if ((flags & PackageManager.GET_SIGNATURES) != 0) {
-            if (base == null) {
+            if (p.mSignatures != null && p.mSignatures.length > 0) {
                 pi.signatures = p.mSignatures;
-            } else {
+            } else if (base != null && base.signatures != null) {
                 pi.signatures = base.signatures;
             }
         }
         if (BuildCompat.isPie()) {
             if ((flags & PackageManager.GET_SIGNING_CERTIFICATES) != 0) {
-                if (base == null) {
-                    PackageParser.SigningDetails signingDetails = PackageParser.SigningDetails.UNKNOWN;
-                    BRPackageParserSigningDetails.get(signingDetails)._set_signatures(p.mSigningDetails.signatures);
-                    pi.signingInfo = BRSigningInfo.get()._new(signingDetails);
-                } else {
+                if (p.mSigningDetails != null && p.mSigningDetails.signatures != null && p.mSigningDetails.signatures.length > 0) {
+                    try {
+                        PackageParser.SigningDetails signingDetails = PackageParser.SigningDetails.UNKNOWN;
+                        BRPackageParserSigningDetails.get(signingDetails)._set_signatures(p.mSigningDetails.signatures);
+                        pi.signingInfo = BRSigningInfo.get()._new(signingDetails);
+                    } catch (Throwable ignored) {
+                    }
+                } else if (base != null && base.signingInfo != null) {
                     pi.signingInfo = base.signingInfo;
                 }
             }

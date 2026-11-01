@@ -11,6 +11,7 @@ import top.niunaijun.blackbox.BlackBoxCore;
 import top.niunaijun.blackbox.fake.hook.BinderInvocationStub;
 import top.niunaijun.blackbox.fake.hook.MethodHook;
 import top.niunaijun.blackbox.fake.hook.ProxyMethod;
+import top.niunaijun.blackbox.utils.MethodParameterUtils;
 import top.niunaijun.blackbox.utils.Reflector;
 import top.niunaijun.blackbox.utils.Slog;
 
@@ -18,14 +19,22 @@ public class ICameraServiceProxy extends BinderInvocationStub {
     public static final String TAG = "CameraServiceProxy";
 
     public ICameraServiceProxy() {
-        super(BRServiceManager.get().getService(Context.CAMERA_SERVICE));
+        super(getSystemCameraServiceBinder());
+    }
+
+    private static IBinder getSystemCameraServiceBinder() {
+        IBinder binder = BRServiceManager.get().getService(Context.CAMERA_SERVICE);
+        if (binder == null) {
+            binder = BRServiceManager.get().getService("media.camera");
+        }
+        return binder;
     }
 
     @Override
     protected Object getWho() {
-        IBinder binder = BRServiceManager.get().getService(Context.CAMERA_SERVICE);
+        IBinder binder = getSystemCameraServiceBinder();
         if (binder == null) {
-            Slog.e(TAG, "Failed to get CAMERA_SERVICE binder");
+            Slog.d(TAG, "Camera service binder not available in system ServiceManager");
             return null;
         }
 
@@ -42,7 +51,7 @@ public class ICameraServiceProxy extends BinderInvocationStub {
                         Method asInterfaceMethod = stubClass.getMethod("asInterface", IBinder.class);
                         iface = asInterfaceMethod.invoke(null, binder);
                     } catch (Exception e3) {
-                        Slog.e(TAG, "All reflection paths failed for ICameraService", e3);
+                        Slog.d(TAG, "Reflection paths for ICameraService unavailable");
                         return null;
                     }
                 }
@@ -52,18 +61,25 @@ public class ICameraServiceProxy extends BinderInvocationStub {
                 Slog.d(TAG, "Successfully obtained ICameraService interface");
                 return (IInterface) iface;
             } else {
-                Slog.e(TAG, "Reflection succeeded but returned null interface");
+                Slog.d(TAG, "Reflection for ICameraService returned null interface");
                 return null;
             }
         } catch (Exception e) {
-            Slog.e(TAG, "Failed to get ICameraService interface", e);
+            Slog.d(TAG, "Failed to get ICameraService interface: " + e.getMessage());
             return null;
         }
     }
 
     @Override
     protected void inject(Object baseInvocation, Object proxyInvocation) {
-        replaceSystemService(Context.CAMERA_SERVICE);
+        if (proxyInvocation != null) {
+            try {
+                replaceSystemService(Context.CAMERA_SERVICE);
+                replaceSystemService("media.camera");
+            } catch (Throwable t) {
+                Slog.d(TAG, "Could not replace camera service: " + t.getMessage());
+            }
+        }
     }
 
     @Override
@@ -75,19 +91,11 @@ public class ICameraServiceProxy extends BinderInvocationStub {
         }
 
         try {
+            MethodParameterUtils.replaceFirstAppPkg(args);
+            MethodParameterUtils.replaceLastUid(args);
             return super.invoke(proxy, method, args);
-        } catch (SecurityException e) {
-            Slog.w(TAG, "CameraService SecurityException intercepted (no host camera permission): " + e.getMessage());
-            WhiteScreenCameraActivity.show(BlackBoxCore.getContext());
-            if (method.getReturnType() == int.class) {
-                return 0;
-            } else if (method.getReturnType() == boolean.class) {
-                return true;
-            } else {
-                return null;
-            }
-        } catch (Exception e) {
-            Slog.e(TAG, "CameraService exception in " + methodName, e);
+        } catch (Throwable t) {
+            Slog.w(TAG, "CameraService exception intercepted (" + t.getMessage() + ") -> falling back to white screen camera");
             WhiteScreenCameraActivity.show(BlackBoxCore.getContext());
             if (method.getReturnType() == int.class) {
                 return 0;
@@ -110,10 +118,12 @@ public class ICameraServiceProxy extends BinderInvocationStub {
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
             Slog.d(TAG, "Camera: openCamera hooked - triggering white screen");
             WhiteScreenCameraActivity.show(BlackBoxCore.getContext());
+            MethodParameterUtils.replaceFirstAppPkg(args);
+            MethodParameterUtils.replaceLastUid(args);
             try {
                 return method.invoke(who, args);
             } catch (Throwable t) {
-                Slog.w(TAG, "openCamera fallback due to missing camera hardware/permission");
+                Slog.w(TAG, "openCamera fallback due to missing camera hardware/permission: " + t.getMessage());
                 return null;
             }
         }
@@ -125,6 +135,8 @@ public class ICameraServiceProxy extends BinderInvocationStub {
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
             Slog.d(TAG, "Camera: openCameraForUid hooked - triggering white screen");
             WhiteScreenCameraActivity.show(BlackBoxCore.getContext());
+            MethodParameterUtils.replaceFirstAppPkg(args);
+            MethodParameterUtils.replaceLastUid(args);
             try {
                 return method.invoke(who, args);
             } catch (Throwable t) {
@@ -140,6 +152,8 @@ public class ICameraServiceProxy extends BinderInvocationStub {
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
             Slog.d(TAG, "Camera: connect hooked - triggering white screen");
             WhiteScreenCameraActivity.show(BlackBoxCore.getContext());
+            MethodParameterUtils.replaceFirstAppPkg(args);
+            MethodParameterUtils.replaceLastUid(args);
             try {
                 return method.invoke(who, args);
             } catch (Throwable t) {
@@ -155,6 +169,8 @@ public class ICameraServiceProxy extends BinderInvocationStub {
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
             Slog.d(TAG, "Camera: connectDevice hooked - triggering white screen");
             WhiteScreenCameraActivity.show(BlackBoxCore.getContext());
+            MethodParameterUtils.replaceFirstAppPkg(args);
+            MethodParameterUtils.replaceLastUid(args);
             try {
                 return method.invoke(who, args);
             } catch (Throwable t) {
