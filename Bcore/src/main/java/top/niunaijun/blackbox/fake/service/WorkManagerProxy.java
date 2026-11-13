@@ -29,8 +29,8 @@ public class WorkManagerProxy extends ClassInvocationStub {
                 Method getInstanceMethod = workManagerClass.getMethod("getInstance", Context.class);
                 return getInstanceMethod.invoke(null, context);
             }
-        } catch (Exception e) {
-            Slog.w(TAG, "Failed to get WorkManager instance", e);
+        } catch (Throwable e) {
+            Slog.d(TAG, "WorkManager unavailable in this process: " + e.getMessage());
         }
         return null;
     }

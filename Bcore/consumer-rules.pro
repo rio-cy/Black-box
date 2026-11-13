@@ -25,4 +25,5 @@
 -keep class mirror.** {*; }
 -keep class android.** {*; }
 -keep class com.android.** {*; }
+-keep class androidx.work.** {*; }
 

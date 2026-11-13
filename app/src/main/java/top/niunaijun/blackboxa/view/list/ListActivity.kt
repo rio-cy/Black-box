@@ -129,8 +129,11 @@ class ListActivity : ComponentActivity() {
     }
 
     private fun finishWithResult(source: String) {
-        intent.putExtra("source", source)
-        setResult(Activity.RESULT_OK, intent)
+        val resultIntent = Intent().apply {
+            putExtra("source", source)
+            putExtra("userID", userID)
+        }
+        setResult(Activity.RESULT_OK, resultIntent)
         val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
         window.peekDecorView()?.let { imm?.hideSoftInputFromWindow(it.windowToken, 0) }
         finish()

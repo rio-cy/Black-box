@@ -1,19 +1,41 @@
+#include "AntiDetection.h"
+#include "IO.h"
+
 #include <android/log.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <stdio.h>
-#include <string.h>
-#include <errno.h>
+#include <atomic>
 #include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
 #include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <string>
+#include <sys/stat.h>
+#include <sys/syscall.h>
+#include <unistd.h>
 #include "Dobby/dobby.h"
 #include "xdl.h"
+
+#ifndef MFD_CLOEXEC
+#define MFD_CLOEXEC 0x0001U
+#endif
+
+#ifndef __NR_memfd_create
+#if defined(__aarch64__)
+#define __NR_memfd_create 279
+#elif defined(__arm__)
+#define __NR_memfd_create 385
+#endif
+#endif
 
 #define LOG_TAG "AntiDetection"
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 
-static const char* blocked_files[] = {
+static std::atomic<bool> g_hooks_installed{false};
+
+static const char *blocked_files[] = {
     // Root & Superuser
     "/system/xbin/su",
     "/system/bin/su",
@@ -32,8 +54,8 @@ static const char* blocked_files[] = {
     "/system/xbin/magisk",
     "/sbin/magisk",
     "/data/adb/magisk",
-    
-    // Virtualization & Sandbox artifacts
+
+    // Virtualization & Sandbox artifacts (never match /blackbox/data/* virtual app files)
     "/data/virtual",
     "/data/data/com.benny.openlauncher",
     "/data/data/io.va.exposed",
@@ -43,10 +65,9 @@ static const char* blocked_files[] = {
     "/data/data/com.dual.dualspace",
     "/data/data/com.ludashi.superboost",
     "/data/data/top.niunaijun.blackboxa",
-    "/blackbox",
-    "/virtual",
-    
-    // Emulator artifacts
+    "/data/user/0/top.niunaijun.blackboxa",
+
+    // Emulator & SELinux-denied proc artifacts
     "/dev/vboxguest",
     "/dev/vboxuser",
     "/dev/qemu_pipe",
@@ -60,27 +81,27 @@ static const char* blocked_files[] = {
     "/system/bin/nox-prop",
     "/sys/module/goldfish_audio",
     "/sys/module/goldfish_sync",
-    "/proc/tty/drivers/goldfish",
+    "/proc/tty/drivers",
     "/dev/goldfish_events",
     "/system/lib/libdroid4x.so",
     "/system/bin/windroyed",
     "/system/lib/libnoxspeedup.so",
     "/system/lib/libmemu.so",
     "/system/lib/libbluelog.so",
-    
+
     // Hooking Frameworks
     "/system/xposed.prop",
     "/system/framework/XposedBridge.jar",
     "/data/data/de.robv.android.xposed.installer",
     "/data/data/org.meowcat.edxposed.manager",
     "/data/data/top.canyie.dreamland.manager",
-    
+
     nullptr
 };
 
-static const char* blocked_packages[] = {
+static const char *blocked_packages[] = {
     "com.noshufou.android.su",
-    "com.noshufou.android.su.elite", 
+    "com.noshufou.android.su.elite",
     "eu.chainfire.supersu",
     "com.koushikdutta.superuser",
     "com.thirdparty.superuser",
@@ -110,8 +131,37 @@ static const char* blocked_packages[] = {
     nullptr
 };
 
-static bool is_blocked_file(const char* path) {
+static bool is_virtual_sandbox_path(const char *path) {
     if (!path) return false;
+    return strstr(path, "/blackbox/data/") != nullptr ||
+           strstr(path, "/blackbox/proc/") != nullptr ||
+           strstr(path, "/blackbox/profiles/") != nullptr ||
+           strstr(path, "/blackbox/cache/") != nullptr;
+}
+
+static bool is_safe_path(const char *path) {
+    if (!path) return false;
+    if (strstr(path, "/proc/net/")) return true;
+    if (strstr(path, "/dev/socket/")) return true;
+    return false;
+}
+
+static bool is_blocked_file(const char *path) {
+    if (!path || is_virtual_sandbox_path(path)) return false;
+
+    if (strcmp(path, "/blackbox") == 0 || strcmp(path, "/blackbox/") == 0 ||
+        strcmp(path, "/virtual") == 0 || strcmp(path, "/virtual/") == 0) {
+        return true;
+    }
+
+    // Block direct probing of the host package directories unless it points into /blackbox/data|proc|profiles|cache
+    if ((strstr(path, "/data/data/top.niunaijun.blackbox") != nullptr ||
+         strstr(path, "/data/user/0/top.niunaijun.blackbox") != nullptr ||
+         strstr(path, "/data/app/") != nullptr) &&
+        strstr(path, "top.niunaijun.blackbox") != nullptr) {
+        return true;
+    }
+
     for (int i = 0; blocked_files[i]; ++i) {
         if (strstr(path, blocked_files[i])) {
             return true;
@@ -120,8 +170,8 @@ static bool is_blocked_file(const char* path) {
     return false;
 }
 
-static bool is_blocked_package(const char* path) {
-    if (!path) return false;
+static bool is_blocked_package(const char *path) {
+    if (!path || is_virtual_sandbox_path(path)) return false;
     for (int i = 0; blocked_packages[i]; ++i) {
         if (strstr(path, blocked_packages[i])) {
             return true;
@@ -130,65 +180,177 @@ static bool is_blocked_package(const char* path) {
     return false;
 }
 
-static bool is_safe_path(const char* path) {
-    if (!path) return false;
-    if (strstr(path, "/proc/net/")) return true;
-    if (strstr(path, "/dev/socket/")) return true;
-    return false;
+static bool ends_with(const char *str, const char *suffix) {
+    if (!str || !suffix) return false;
+    size_t str_len = strlen(str);
+    size_t suf_len = strlen(suffix);
+    if (str_len < suf_len) return false;
+    return strcmp(str + str_len - suf_len, suffix) == 0;
 }
 
-static bool is_maps_path(const char* path) {
+static bool is_maps_path(const char *path) {
     if (!path) return false;
-    return strstr(path, "/proc/") != nullptr && (strstr(path, "/maps") != nullptr || strstr(path, "/smaps") != nullptr);
+    if (strncmp(path, "/proc/", 6) != 0) return false;
+    return ends_with(path, "/maps") ||
+           ends_with(path, "/smaps") ||
+           ends_with(path, "/smaps_rollup") ||
+           ends_with(path, "/numa_maps");
+}
+
+static bool is_mountinfo_path(const char *path) {
+    if (!path) return false;
+    if (strncmp(path, "/proc/", 6) != 0) return false;
+    return ends_with(path, "/mountinfo") || ends_with(path, "/mounts");
 }
 
 static int (*orig_access)(const char *pathname, int mode) = nullptr;
+static int (*orig_faccessat)(int dirfd, const char *pathname, int mode, int flags) = nullptr;
 static int (*orig_stat)(const char *pathname, struct stat *buf) = nullptr;
 static int (*orig_lstat)(const char *pathname, struct stat *buf) = nullptr;
-static FILE* (*orig_fopen)(const char *pathname, const char *mode) = nullptr;
+static int (*orig_fstatat)(int dirfd, const char *pathname, struct stat *buf, int flags) = nullptr;
+static FILE *(*orig_fopen)(const char *pathname, const char *mode) = nullptr;
+static FILE *(*orig_fopen64)(const char *pathname, const char *mode) = nullptr;
 static int (*orig_open)(const char *pathname, int flags, ...) = nullptr;
+static int (*orig_open64)(const char *pathname, int flags, ...) = nullptr;
 static int (*orig_openat)(int dirfd, const char *pathname, int flags, ...) = nullptr;
+static int (*orig_openat64)(int dirfd, const char *pathname, int flags, ...) = nullptr;
 static ssize_t (*orig_readlink)(const char *pathname, char *buf, size_t bufsiz) = nullptr;
-static DIR* (*orig_opendir)(const char *name) = nullptr;
+static ssize_t (*orig_readlinkat)(int dirfd, const char *pathname, char *buf, size_t bufsiz) = nullptr;
+static DIR *(*orig_opendir)(const char *name) = nullptr;
 
-static FILE* create_sanitized_maps_file(const char* real_path) {
-    FILE* real_fp = orig_fopen ? orig_fopen(real_path, "r") : fopen(real_path, "r");
-    if (!real_fp) return nullptr;
+// Rewrite virtual sandbox paths like:
+//   /data/(data|user/<n>)/top.niunaijun.blackbox/blackbox/data/app/<pkg>/... -> /data/app/<pkg>/...
+//   /data/(data|user/<n>)/top.niunaijun.blackbox/blackbox/data/user/<n>/<pkg>/... -> /data/user/0/<pkg>/...
+//   /data/(data|user/<n>)/top.niunaijun.blackbox/blackbox/data/user_de/<n>/<pkg>/... -> /data/user_de/0/<pkg>/...
+// Returns false if the string contains BlackBox host references that should be hidden completely.
+static bool sanitize_virtual_text(const char *in, char *out, size_t out_size) {
+    if (!in || !out || out_size == 0) return false;
 
-    FILE* tmp_fp = tmpfile();
-    if (!tmp_fp) {
-        fclose(real_fp);
-        return nullptr;
+    if (strstr(in, "libblackbox") != nullptr ||
+        strstr(in, "libdobby") != nullptr ||
+        strstr(in, "blackboxa") != nullptr ||
+        strstr(in, "/virtual/") != nullptr) {
+        return false;
     }
 
-    char line[1024];
-    while (fgets(line, sizeof(line), real_fp)) {
-        if (strstr(line, "libblackbox.so") != nullptr ||
-            strstr(line, "top.niunaijun.blackbox") != nullptr ||
-            strstr(line, "blackboxa") != nullptr ||
-            strstr(line, "/blackbox/") != nullptr ||
-            strstr(line, "/virtual/") != nullptr ||
-            strstr(line, "libblackbox") != nullptr) {
-            continue; // Purge BlackBox framework references from memory map
+    const char *bb_data_app = strstr(in, "/blackbox/data/app/");
+    const char *bb_data_user = strstr(in, "/blackbox/data/user/");
+    const char *bb_data_user_de = strstr(in, "/blackbox/data/user_de/");
+
+    if (bb_data_app || bb_data_user || bb_data_user_de) {
+        const char *marker = bb_data_app ? bb_data_app : (bb_data_user ? bb_data_user : bb_data_user_de);
+        const char *host_data = strstr(in, "/data/");
+        if (!host_data || host_data > marker) {
+            return false;
         }
-        fputs(line, tmp_fp);
+
+        const char *replacement = nullptr;
+        const char *after_marker = nullptr;
+        if (marker == bb_data_app) {
+            replacement = "/data/app/";
+            after_marker = marker + strlen("/blackbox/data/app/");
+        } else if (marker == bb_data_user) {
+            replacement = "/data/user/0/";
+            after_marker = marker + strlen("/blackbox/data/user/");
+            while (*after_marker >= '0' && *after_marker <= '9') after_marker++;
+            if (*after_marker == '/') after_marker++;
+        } else {
+            replacement = "/data/user_de/0/";
+            after_marker = marker + strlen("/blackbox/data/user_de/");
+            while (*after_marker >= '0' && *after_marker <= '9') after_marker++;
+            if (*after_marker == '/') after_marker++;
+        }
+
+        size_t prefix_len = static_cast<size_t>(host_data - in);
+        size_t rep_len = strlen(replacement);
+        size_t tail_len = strlen(after_marker);
+        if (prefix_len + rep_len + tail_len >= out_size) {
+            return false;
+        }
+        memcpy(out, in, prefix_len);
+        memcpy(out + prefix_len, replacement, rep_len);
+        memcpy(out + prefix_len + rep_len, after_marker, tail_len);
+        out[prefix_len + rep_len + tail_len] = '\0';
+
+        // Recursively strip if any unexpected blackbox reference remains on the line
+        if (strstr(out, "top.niunaijun.blackbox") != nullptr || strstr(out, "/blackbox/") != nullptr) {
+            return false;
+        }
+        return true;
     }
-    fclose(real_fp);
-    rewind(tmp_fp);
-    return tmp_fp;
+
+    if (strstr(in, "top.niunaijun.blackbox") != nullptr || strstr(in, "/blackbox/") != nullptr) {
+        return false;
+    }
+
+    size_t len = strlen(in);
+    if (len >= out_size) len = out_size - 1;
+    memcpy(out, in, len);
+    out[len] = '\0';
+    return true;
 }
 
-static int create_sanitized_maps_fd(const char* real_path) {
-    FILE* tmp_fp = create_sanitized_maps_file(real_path);
-    if (!tmp_fp) return -1;
-    int raw_fd = fileno(tmp_fp);
-    if (raw_fd < 0) {
-        fclose(tmp_fp);
+static bool write_all(int fd, const char *buf, size_t len) {
+    size_t written = 0;
+    while (written < len) {
+        ssize_t n = write(fd, buf + written, len - written);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            return false;
+        }
+        written += static_cast<size_t>(n);
+    }
+    return true;
+}
+
+static int create_memfd_file() {
+#ifdef __NR_memfd_create
+    int mfd = static_cast<int>(syscall(__NR_memfd_create, "jit-cache", MFD_CLOEXEC));
+    if (mfd >= 0) {
+        return mfd;
+    }
+#endif
+    return -1;
+}
+
+static int create_sanitized_maps_fd(const char *real_path, bool is_mount) {
+    FILE *real_fp = orig_fopen ? orig_fopen(real_path, "r") : fopen(real_path, "r");
+    if (!real_fp) return -1;
+
+    int mfd = create_memfd_file();
+    if (mfd < 0) {
+        fclose(real_fp);
         return -1;
     }
-    int dup_fd = dup(raw_fd);
-    fclose(tmp_fp);
-    return dup_fd;
+
+    char line[4096];
+    char clean_line[4096];
+    while (fgets(line, sizeof(line), real_fp)) {
+        if (is_mount) {
+            if (strstr(line, "blackbox") != nullptr || strstr(line, "top.niunaijun.blackbox") != nullptr) {
+                continue;
+            }
+            write_all(mfd, line, strlen(line));
+        } else {
+            if (sanitize_virtual_text(line, clean_line, sizeof(clean_line))) {
+                write_all(mfd, clean_line, strlen(clean_line));
+            }
+        }
+    }
+    fclose(real_fp);
+    lseek(mfd, 0, SEEK_SET);
+    return mfd;
+}
+
+static FILE *create_sanitized_maps_file(const char *real_path, bool is_mount) {
+    int fd = create_sanitized_maps_fd(real_path, is_mount);
+    if (fd < 0) return nullptr;
+    FILE *fp = fdopen(fd, "r");
+    if (!fp) {
+        close(fd);
+        return nullptr;
+    }
+    return fp;
 }
 
 static int my_access(const char *pathname, int mode) {
@@ -196,7 +358,19 @@ static int my_access(const char *pathname, int mode) {
         errno = ENOENT;
         return -1;
     }
-    return orig_access ? orig_access(pathname, mode) : -1;
+    std::string storage;
+    const char *final_path = IO::redirectPath(pathname, storage);
+    return orig_access ? orig_access(final_path, mode) : -1;
+}
+
+static int my_faccessat(int dirfd, const char *pathname, int mode, int flags) {
+    if (pathname && !is_safe_path(pathname) && (is_blocked_file(pathname) || is_blocked_package(pathname))) {
+        errno = ENOENT;
+        return -1;
+    }
+    std::string storage;
+    const char *final_path = IO::redirectPath(pathname, storage);
+    return orig_faccessat ? orig_faccessat(dirfd, final_path, mode, flags) : -1;
 }
 
 static int my_stat(const char *pathname, struct stat *buf) {
@@ -204,7 +378,9 @@ static int my_stat(const char *pathname, struct stat *buf) {
         errno = ENOENT;
         return -1;
     }
-    return orig_stat ? orig_stat(pathname, buf) : -1;
+    std::string storage;
+    const char *final_path = IO::redirectPath(pathname, storage);
+    return orig_stat ? orig_stat(final_path, buf) : -1;
 }
 
 static int my_lstat(const char *pathname, struct stat *buf) {
@@ -212,74 +388,162 @@ static int my_lstat(const char *pathname, struct stat *buf) {
         errno = ENOENT;
         return -1;
     }
-    return orig_lstat ? orig_lstat(pathname, buf) : -1;
+    std::string storage;
+    const char *final_path = IO::redirectPath(pathname, storage);
+    return orig_lstat ? orig_lstat(final_path, buf) : -1;
 }
 
-static FILE* my_fopen(const char *pathname, const char *mode) {
-    if (pathname && is_maps_path(pathname)) {
-        FILE* fp = create_sanitized_maps_file(pathname);
-        if (fp) {
-            LOGD("my_fopen: Sanitized memory map for %s", pathname);
-            return fp;
-        }
-    }
+static int my_fstatat(int dirfd, const char *pathname, struct stat *buf, int flags) {
     if (pathname && !is_safe_path(pathname) && (is_blocked_file(pathname) || is_blocked_package(pathname))) {
         errno = ENOENT;
-        return nullptr;
+        return -1;
     }
-    return orig_fopen ? orig_fopen(pathname, mode) : nullptr;
+    std::string storage;
+    const char *final_path = IO::redirectPath(pathname, storage);
+    return orig_fstatat ? orig_fstatat(dirfd, final_path, buf, flags) : -1;
+}
+
+static FILE *handle_fopen_common(FILE *(*orig_fn)(const char *, const char *), const char *pathname, const char *mode) {
+    if (pathname) {
+        if (is_maps_path(pathname)) {
+            FILE *fp = create_sanitized_maps_file(pathname, false);
+            if (fp) return fp;
+        } else if (is_mountinfo_path(pathname)) {
+            FILE *fp = create_sanitized_maps_file(pathname, true);
+            if (fp) return fp;
+        }
+        if (!is_safe_path(pathname) && (is_blocked_file(pathname) || is_blocked_package(pathname))) {
+            errno = ENOENT;
+            return nullptr;
+        }
+    }
+    std::string storage;
+    const char *final_path = IO::redirectPath(pathname, storage);
+    return orig_fn ? orig_fn(final_path, mode) : nullptr;
+}
+
+static FILE *my_fopen(const char *pathname, const char *mode) {
+    return handle_fopen_common(orig_fopen, pathname, mode);
+}
+
+static FILE *my_fopen64(const char *pathname, const char *mode) {
+    return handle_fopen_common(orig_fopen64, pathname, mode);
+}
+
+static inline bool has_mode_arg(int flags) {
+#ifdef O_TMPFILE
+    return (flags & O_CREAT) != 0 || (flags & O_TMPFILE) == O_TMPFILE;
+#else
+    return (flags & O_CREAT) != 0;
+#endif
+}
+
+static int handle_open_common(int (*orig_fn)(const char *, int, ...), const char *pathname, int flags, mode_t mode, bool use_mode) {
+    if (pathname) {
+        if (is_maps_path(pathname)) {
+            int fd = create_sanitized_maps_fd(pathname, false);
+            if (fd >= 0) return fd;
+        } else if (is_mountinfo_path(pathname)) {
+            int fd = create_sanitized_maps_fd(pathname, true);
+            if (fd >= 0) return fd;
+        }
+        if (!is_safe_path(pathname) && (is_blocked_file(pathname) || is_blocked_package(pathname))) {
+            errno = ENOENT;
+            return -1;
+        }
+    }
+    if (!orig_fn) return -1;
+    std::string storage;
+    const char *final_path = IO::redirectPath(pathname, storage);
+    return use_mode ? orig_fn(final_path, flags, mode) : orig_fn(final_path, flags);
 }
 
 static int my_open(const char *pathname, int flags, ...) {
-    if (pathname && is_maps_path(pathname)) {
-        int fd = create_sanitized_maps_fd(pathname);
-        if (fd >= 0) {
-            LOGD("my_open: Sanitized memory map fd for %s", pathname);
-            return fd;
+    mode_t mode = 0;
+    bool use_mode = has_mode_arg(flags);
+    if (use_mode) {
+        va_list args;
+        va_start(args, flags);
+        mode = static_cast<mode_t>(va_arg(args, int));
+        va_end(args);
+    }
+    return handle_open_common(orig_open, pathname, flags, mode, use_mode);
+}
+
+static int my_open64(const char *pathname, int flags, ...) {
+    mode_t mode = 0;
+    bool use_mode = has_mode_arg(flags);
+    if (use_mode) {
+        va_list args;
+        va_start(args, flags);
+        mode = static_cast<mode_t>(va_arg(args, int));
+        va_end(args);
+    }
+    return handle_open_common(orig_open64, pathname, flags, mode, use_mode);
+}
+
+static int handle_openat_common(int (*orig_fn)(int, const char *, int, ...), int dirfd, const char *pathname, int flags, mode_t mode, bool use_mode) {
+    if (pathname) {
+        if (is_maps_path(pathname)) {
+            int fd = create_sanitized_maps_fd(pathname, false);
+            if (fd >= 0) return fd;
+        } else if (is_mountinfo_path(pathname)) {
+            int fd = create_sanitized_maps_fd(pathname, true);
+            if (fd >= 0) return fd;
+        }
+        if (!is_safe_path(pathname) && (is_blocked_file(pathname) || is_blocked_package(pathname))) {
+            errno = ENOENT;
+            return -1;
         }
     }
-    if (pathname && !is_safe_path(pathname) && (is_blocked_file(pathname) || is_blocked_package(pathname))) {
-        errno = ENOENT;
-        return -1;
-    }
-    if (orig_open) {
-        if (flags & O_CREAT) {
-            va_list args;
-            va_start(args, flags);
-            mode_t mode = va_arg(args, mode_t);
-            va_end(args);
-            return orig_open(pathname, flags, mode);
-        } else {
-            return orig_open(pathname, flags);
-        }
-    }
-    return -1;
+    if (!orig_fn) return -1;
+    std::string storage;
+    const char *final_path = IO::redirectPath(pathname, storage);
+    return use_mode ? orig_fn(dirfd, final_path, flags, mode) : orig_fn(dirfd, final_path, flags);
 }
 
 static int my_openat(int dirfd, const char *pathname, int flags, ...) {
-    if (pathname && is_maps_path(pathname)) {
-        int fd = create_sanitized_maps_fd(pathname);
-        if (fd >= 0) {
-            LOGD("my_openat: Sanitized memory map fd for %s", pathname);
-            return fd;
+    mode_t mode = 0;
+    bool use_mode = has_mode_arg(flags);
+    if (use_mode) {
+        va_list args;
+        va_start(args, flags);
+        mode = static_cast<mode_t>(va_arg(args, int));
+        va_end(args);
+    }
+    return handle_openat_common(orig_openat, dirfd, pathname, flags, mode, use_mode);
+}
+
+static int my_openat64(int dirfd, const char *pathname, int flags, ...) {
+    mode_t mode = 0;
+    bool use_mode = has_mode_arg(flags);
+    if (use_mode) {
+        va_list args;
+        va_start(args, flags);
+        mode = static_cast<mode_t>(va_arg(args, int));
+        va_end(args);
+    }
+    return handle_openat_common(orig_openat64, dirfd, pathname, flags, mode, use_mode);
+}
+
+static ssize_t sanitize_readlink_result(ssize_t len, char *buf, size_t bufsiz) {
+    if (len <= 0 || !buf || bufsiz == 0 || static_cast<size_t>(len) >= PATH_MAX) {
+        return len;
+    }
+    char raw[PATH_MAX];
+    char clean[PATH_MAX];
+    memcpy(raw, buf, static_cast<size_t>(len));
+    raw[len] = '\0';
+
+    if (strstr(raw, "/blackbox/data/") != nullptr) {
+        if (sanitize_virtual_text(raw, clean, sizeof(clean))) {
+            size_t new_len = strlen(clean);
+            if (new_len > bufsiz) new_len = bufsiz;
+            memcpy(buf, clean, new_len);
+            return static_cast<ssize_t>(new_len);
         }
     }
-    if (pathname && !is_safe_path(pathname) && (is_blocked_file(pathname) || is_blocked_package(pathname))) {
-        errno = ENOENT;
-        return -1;
-    }
-    if (orig_openat) {
-        if (flags & O_CREAT) {
-            va_list args;
-            va_start(args, flags);
-            mode_t mode = va_arg(args, mode_t);
-            va_end(args);
-            return orig_openat(dirfd, pathname, flags, mode);
-        } else {
-            return orig_openat(dirfd, pathname, flags);
-        }
-    }
-    return -1;
+    return len;
 }
 
 static ssize_t my_readlink(const char *pathname, char *buf, size_t bufsiz) {
@@ -287,70 +551,81 @@ static ssize_t my_readlink(const char *pathname, char *buf, size_t bufsiz) {
         errno = ENOENT;
         return -1;
     }
-    return orig_readlink ? orig_readlink(pathname, buf, bufsiz) : -1;
+    if (!orig_readlink) return -1;
+    std::string storage;
+    const char *final_path = IO::redirectPath(pathname, storage);
+    ssize_t ret = orig_readlink(final_path, buf, bufsiz);
+    return sanitize_readlink_result(ret, buf, bufsiz);
 }
 
-static DIR* my_opendir(const char *name) {
+static ssize_t my_readlinkat(int dirfd, const char *pathname, char *buf, size_t bufsiz) {
+    if (pathname && !is_safe_path(pathname) && (is_blocked_file(pathname) || is_blocked_package(pathname))) {
+        errno = ENOENT;
+        return -1;
+    }
+    if (!orig_readlinkat) return -1;
+    std::string storage;
+    const char *final_path = IO::redirectPath(pathname, storage);
+    ssize_t ret = orig_readlinkat(dirfd, final_path, buf, bufsiz);
+    return sanitize_readlink_result(ret, buf, bufsiz);
+}
+
+static DIR *my_opendir(const char *name) {
     if (name && !is_safe_path(name) && (is_blocked_file(name) || is_blocked_package(name))) {
         errno = ENOENT;
         return nullptr;
     }
-    return orig_opendir ? orig_opendir(name) : nullptr;
+    std::string storage;
+    const char *final_path = IO::redirectPath(name, storage);
+    return orig_opendir ? orig_opendir(final_path) : nullptr;
 }
 
-static void install_file_hooks() {
-    void* handle = xdl_open("libc.so", XDL_DEFAULT);
+static void hook_unique_symbol(void *handle, const char *name, void *replacement, void **orig,
+                               void **seen, int &seen_count, int max_seen) {
+    void *target = xdl_dsym(handle, name, nullptr);
+    if (!target) return;
+    for (int i = 0; i < seen_count; ++i) {
+        if (seen[i] == target) {
+            return;
+        }
+    }
+    if (DobbyHook(target, replacement, orig) == 0 && seen_count < max_seen) {
+        seen[seen_count++] = target;
+    }
+}
+
+void AntiDetection::init() {
+    bool expected = false;
+    if (!g_hooks_installed.compare_exchange_strong(expected, true)) {
+        return;
+    }
+
+    void *handle = xdl_open("libc.so", XDL_DEFAULT);
     if (!handle) {
         LOGD("xdl_open failed for libc.so");
         return;
     }
 
-    void* target_access = xdl_dsym(handle, "access", nullptr);
-    if (target_access) {
-        DobbyHook(target_access, (void*)my_access, (void**)&orig_access);
-    }
+    void *seen[24] = {nullptr};
+    int seen_count = 0;
+    constexpr int max_seen = 24;
 
-    void* target_stat = xdl_dsym(handle, "stat", nullptr);
-    if (target_stat) {
-        DobbyHook(target_stat, (void*)my_stat, (void**)&orig_stat);
-    }
-
-    void* target_lstat = xdl_dsym(handle, "lstat", nullptr);
-    if (target_lstat) {
-        DobbyHook(target_lstat, (void*)my_lstat, (void**)&orig_lstat);
-    }
-
-    void* target_fopen = xdl_dsym(handle, "fopen", nullptr);
-    if (target_fopen) {
-        DobbyHook(target_fopen, (void*)my_fopen, (void**)&orig_fopen);
-    }
-
-    void* target_open = xdl_dsym(handle, "open", nullptr);
-    if (target_open) {
-        DobbyHook(target_open, (void*)my_open, (void**)&orig_open);
-    }
-
-    void* target_openat = xdl_dsym(handle, "openat", nullptr);
-    if (target_openat) {
-        DobbyHook(target_openat, (void*)my_openat, (void**)&orig_openat);
-    }
-
-    void* target_readlink = xdl_dsym(handle, "readlink", nullptr);
-    if (target_readlink) {
-        DobbyHook(target_readlink, (void*)my_readlink, (void**)&orig_readlink);
-    }
-
-    void* target_opendir = xdl_dsym(handle, "opendir", nullptr);
-    if (target_opendir) {
-        DobbyHook(target_opendir, (void*)my_opendir, (void**)&orig_opendir);
-    }
+    hook_unique_symbol(handle, "access", (void *) my_access, (void **) &orig_access, seen, seen_count, max_seen);
+    hook_unique_symbol(handle, "faccessat", (void *) my_faccessat, (void **) &orig_faccessat, seen, seen_count, max_seen);
+    hook_unique_symbol(handle, "stat", (void *) my_stat, (void **) &orig_stat, seen, seen_count, max_seen);
+    hook_unique_symbol(handle, "lstat", (void *) my_lstat, (void **) &orig_lstat, seen, seen_count, max_seen);
+    hook_unique_symbol(handle, "fstatat", (void *) my_fstatat, (void **) &orig_fstatat, seen, seen_count, max_seen);
+    hook_unique_symbol(handle, "fstatat64", (void *) my_fstatat, (void **) &orig_fstatat, seen, seen_count, max_seen);
+    hook_unique_symbol(handle, "fopen", (void *) my_fopen, (void **) &orig_fopen, seen, seen_count, max_seen);
+    hook_unique_symbol(handle, "fopen64", (void *) my_fopen64, (void **) &orig_fopen64, seen, seen_count, max_seen);
+    hook_unique_symbol(handle, "open", (void *) my_open, (void **) &orig_open, seen, seen_count, max_seen);
+    hook_unique_symbol(handle, "open64", (void *) my_open64, (void **) &orig_open64, seen, seen_count, max_seen);
+    hook_unique_symbol(handle, "openat", (void *) my_openat, (void **) &orig_openat, seen, seen_count, max_seen);
+    hook_unique_symbol(handle, "openat64", (void *) my_openat64, (void **) &orig_openat64, seen, seen_count, max_seen);
+    hook_unique_symbol(handle, "readlink", (void *) my_readlink, (void **) &orig_readlink, seen, seen_count, max_seen);
+    hook_unique_symbol(handle, "readlinkat", (void *) my_readlinkat, (void **) &orig_readlinkat, seen, seen_count, max_seen);
+    hook_unique_symbol(handle, "opendir", (void *) my_opendir, (void **) &orig_opendir, seen, seen_count, max_seen);
 
     xdl_close(handle);
-    LOGD("File system and /proc/self/maps memory cloaking hooks installed");
-}
-
-__attribute__((constructor)) void install_antidetection_hooks() {
-    LOGD("Installing anti-detection hooks...");
-    install_file_hooks(); 
-    LOGD("Anti-detection hooks installation complete");
+    LOGD("Native IO redirection, anti-detection, and /proc/self/maps memfd cloaking hooks installed (%d unique)", seen_count);
 }

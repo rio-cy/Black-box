@@ -25,6 +25,7 @@
 -keep class mirror.** {*; }
 -keep class android.** {*; }
 -keep class com.android.** {*; }
+-keep class androidx.work.** {*; }
 
 -keep class top.niunaijun.blackreflection.** {*; }
 -keep @top.niunaijun.blackreflection.annotation.BClass class * {*;}

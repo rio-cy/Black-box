@@ -56,6 +56,7 @@ public class IOCore {
         if (TextUtils.isEmpty(path))
             return;
         sBlackTree.add(path);
+        NativeCore.addIOBlackRule(path);
     }
 
     public String redirectPath(String path) {
@@ -112,6 +113,9 @@ public class IOCore {
         try {
             ApplicationInfo packageInfo = BlackBoxCore.getBPackageManager().getApplicationInfo(packageName, PackageManager.GET_META_DATA, BlackBoxCore.getUserId());
             int systemUserId = BlackBoxCore.getHostUserId();
+            File appDir = BEnvironment.getAppDir(packageName);
+            rule.put(String.format("/data/app/%s", packageName), appDir.getAbsolutePath());
+
             rule.put(String.format("/data/data/%s/lib", packageName), packageInfo.nativeLibraryDir);
             rule.put(String.format("/data/user/%d/%s/lib", systemUserId, packageName), packageInfo.nativeLibraryDir);
 
@@ -148,11 +152,11 @@ public class IOCore {
         } catch (Exception e) {
             e.printStackTrace();
         }
-        for (String key : rule.keySet()) {
-            get().addRedirect(key, rule.get(key));
-        }
         for (String s : blackRule) {
             get().addBlackRedirect(s);
+        }
+        for (String key : rule.keySet()) {
+            get().addRedirect(key, rule.get(key));
         }
         NativeCore.enableIO();
     }

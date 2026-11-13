@@ -71,12 +71,22 @@ public class NativeUtils {
 
             File libFile = new File(nativeLibDir, libName);
             if (libFile.exists() && libFile.length() == entry.getSize()) {
+                libFile.setReadable(true, false);
+                libFile.setExecutable(true, false);
+                libFile.setWritable(false, false);
                 Log.d(TAG, libName + " skip copy");
                 continue;
+            }
+            if (libFile.exists()) {
+                libFile.setWritable(true);
+                libFile.delete();
             }
             FileOutputStream fos = new FileOutputStream(libFile);
             Log.d(TAG, "copy so " + entry.getName() + " of " + cpuArch);
             copySo(buffer, zipfile.getInputStream(entry), fos);
+            libFile.setReadable(true, false);
+            libFile.setExecutable(true, false);
+            libFile.setWritable(false, false);
         }
 
         if (!findLib) {

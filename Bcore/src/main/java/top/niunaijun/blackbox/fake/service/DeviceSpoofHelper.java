@@ -198,10 +198,17 @@ public class DeviceSpoofHelper {
         setStaticField(Build.class, "MANUFACTURER", manufacturer);
         setStaticField(Build.class, "DEVICE", device);
         setStaticField(Build.class, "PRODUCT", device);
-        setStaticField(Build.class, "HARDWARE", device);
-        setStaticField(Build.class, "FINGERPRINT", fingerprint);
         setStaticField(Build.class, "SERIAL", serial);
-        setStaticField(Build.class, "BOARD", device);
+
+        try {
+            top.niunaijun.blackbox.core.NativeCore.setSpoofProp("ro.product.brand", brand);
+            top.niunaijun.blackbox.core.NativeCore.setSpoofProp("ro.product.model", model);
+            top.niunaijun.blackbox.core.NativeCore.setSpoofProp("ro.product.manufacturer", manufacturer);
+            top.niunaijun.blackbox.core.NativeCore.setSpoofProp("ro.product.device", device);
+            top.niunaijun.blackbox.core.NativeCore.setSpoofProp("ro.product.name", device);
+            top.niunaijun.blackbox.core.NativeCore.setSpoofProp("ro.serialno", serial);
+        } catch (Throwable ignored) {
+        }
 
         Log.d(TAG, "Successfully applied Build spoof for user " + userId + ": " + brand + " " + model);
     }

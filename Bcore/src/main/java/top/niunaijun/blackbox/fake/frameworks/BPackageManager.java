@@ -498,20 +498,23 @@ public class BPackageManager extends BlackManager<IBPackageManagerService> {
     public InstallResult installPackageAsUser(String file, InstallOption option, int userId) {
         try {
             
-            if (file != null && !file.isEmpty()) {
-                try {
-                    
-                    PackageInfo packageInfo = BlackBoxCore.getPackageManager().getPackageArchiveInfo(file, 0);
-                    if (packageInfo != null) {
-                        String packageName = packageInfo.packageName;
-                        String hostPackageName = BlackBoxCore.getHostPkg();
-                        if (packageName.equals(hostPackageName)) {
-                            Log.w(TAG, "Attempt to install BlackBox app detected and blocked: " + packageName);
-                            return new InstallResult().installError("Cannot clone BlackBox app from within BlackBox. This would create infinite recursion and is not allowed for security reasons.");
+            boolean isUriFile = option != null && option.isFlag(InstallOption.FLAG_URI_FILE);
+            if (!isUriFile && file != null && !file.isEmpty() && !file.startsWith("content://")) {
+                java.io.File apkFile = new java.io.File(file);
+                if (apkFile.isFile()) {
+                    try {
+                        PackageInfo packageInfo = BlackBoxCore.getPackageManager().getPackageArchiveInfo(file, 0);
+                        if (packageInfo != null) {
+                            String packageName = packageInfo.packageName;
+                            String hostPackageName = BlackBoxCore.getHostPkg();
+                            if (packageName.equals(hostPackageName)) {
+                                Log.w(TAG, "Attempt to install BlackBox app detected and blocked: " + packageName);
+                                return new InstallResult().installError("Cannot clone BlackBox app from within BlackBox. This would create infinite recursion and is not allowed for security reasons.");
+                            }
                         }
+                    } catch (Exception e) {
+                        Log.w(TAG, "Could not verify package info for: " + file, e);
                     }
-                } catch (Exception e) {
-                    Log.w(TAG, "Could not verify package info for: " + file, e);
                 }
             }
             

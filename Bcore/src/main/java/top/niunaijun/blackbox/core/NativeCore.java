@@ -106,6 +106,10 @@ public class NativeCore {
 
     public static native void addIORule(String targetPath, String relocatePath);
 
+    public static native void addIOBlackRule(String path);
+
+    public static native void setSpoofProp(String key, String value);
+
     public static native void hideXposed();
 
     public static native boolean disableHiddenApi();

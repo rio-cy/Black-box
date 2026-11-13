@@ -1,6 +1,0 @@
-{
-  "summary":  "Implementation plan for removing host camera permission and implementing in-app fake camera spoofing with virtual permission granting.",
-  "updatedAt":  "2026-10-31T16:39:46.621994855Z",
-  "requestFeedback":  true,
-  "userFacing":  true
-}

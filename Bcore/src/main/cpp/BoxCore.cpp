@@ -14,6 +14,8 @@
 #include <Hook/DexFileHook.h>
 #include <Hook/RuntimeHook.h>
 #include "Utils/HexDump.h"
+#include "Utils/AntiDetection.h"
+#include "Utils/VirtualSpoof.h"
 #include "hidden_api.h"
 
 struct {
@@ -102,14 +104,41 @@ void init(JNIEnv *env, jobject clazz, jint api_level) {
 
 void addIORule(JNIEnv *env, jclass clazz, jstring target_path,
                jstring relocate_path) {
-    ALOGD("set addIORule");
-    IO::addRule(env->GetStringUTFChars(target_path, JNI_FALSE),
-                env->GetStringUTFChars(relocate_path, JNI_FALSE));
+    if (!target_path || !relocate_path) return;
+    const char *target = env->GetStringUTFChars(target_path, nullptr);
+    const char *relocate = env->GetStringUTFChars(relocate_path, nullptr);
+    if (target && relocate) {
+        IO::addRule(target, relocate);
+    }
+    if (target) env->ReleaseStringUTFChars(target_path, target);
+    if (relocate) env->ReleaseStringUTFChars(relocate_path, relocate);
+}
+
+void addIOBlackRule(JNIEnv *env, jclass clazz, jstring path) {
+    if (!path) return;
+    const char *cpath = env->GetStringUTFChars(path, nullptr);
+    if (cpath) {
+        IO::addBlackRule(cpath);
+        env->ReleaseStringUTFChars(path, cpath);
+    }
+}
+
+void setSpoofProp(JNIEnv *env, jclass clazz, jstring key, jstring value) {
+    if (!key || !value) return;
+    const char *ckey = env->GetStringUTFChars(key, nullptr);
+    const char *cval = env->GetStringUTFChars(value, nullptr);
+    if (ckey && cval) {
+        VirtualSpoof::setProp(ckey, cval);
+    }
+    if (ckey) env->ReleaseStringUTFChars(key, ckey);
+    if (cval) env->ReleaseStringUTFChars(value, cval);
 }
 
 void enableIO(JNIEnv *env, jclass clazz) {
     ALOGD("set enableIO");
     IO::init(env);
+    AntiDetection::init();
+    VirtualSpoof::init();
     nativeHook(env);
 }
 
@@ -136,6 +165,8 @@ static JNINativeMethod gMethods[] = {
         {"disableResourceLoading", "()Z",                         (void *) disableResourceLoading},
         {"hideXposed", "()V",                                     (void *) hideXposed},
         {"addIORule",  "(Ljava/lang/String;Ljava/lang/String;)V", (void *) addIORule},
+        {"addIOBlackRule", "(Ljava/lang/String;)V",               (void *) addIOBlackRule},
+        {"setSpoofProp", "(Ljava/lang/String;Ljava/lang/String;)V", (void *) setSpoofProp},
         {"enableIO",   "()V",                                     (void *) enableIO},
         {"init",       "(I)V",                                    (void *) init},
 };
